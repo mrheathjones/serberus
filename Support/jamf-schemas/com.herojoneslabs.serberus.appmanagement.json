@@ -1,0 +1,67 @@
+{
+  "title": "Serberus — App Management",
+  "description": "Self-service app management via the Finder actions. Delivered to the com.herojoneslabs.serberus.appmanagement preference domain. Absent or disabled ⇒ the daemon refuses every request. When enabled, a user can right-click a .pkg or .app and INSTALL it: the daemon stages it to a root-only area, requires Gatekeeper to accept it as notarized Developer-ID software, requires its publisher (signing Team ID) to be allowed, and installs it AS ROOT. Users can also right-click a /Applications app and UNINSTALL it (moved to their Trash, recoverable). A package's install scripts run as root, so only list publishers you would trust with root on these Macs.",
+  "__preferencedomain": "com.herojoneslabs.serberus.appmanagement",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enable app management",
+      "description": "Master gate. When true, users on this Mac may install notarized software from allowed publishers and (unless disabled below) uninstall /Applications apps to the Trash. Default false.",
+      "default": false,
+      "property_order": 10
+    },
+    "requireNotarization": {
+      "type": "boolean",
+      "title": "Require notarization (install)",
+      "description": "Require Gatekeeper 'Notarized Developer ID' for installs (not merely a Developer-ID signature). Strongly recommended; leave on.",
+      "default": true,
+      "property_order": 20
+    },
+    "allowUninstall": {
+      "type": "boolean",
+      "title": "Allow uninstall",
+      "description": "Permit 'Uninstall with Serberus' — moving a /Applications app to the user's Trash (recoverable) as root. Set false for install-only.",
+      "default": true,
+      "property_order": 30
+    },
+    "protectedBundleIdentifiers": {
+      "type": "array",
+      "title": "Protected bundle identifiers",
+      "description": "Bundle identifiers that 'Uninstall with Serberus' can NEVER move to the Trash, and that 'Install with Serberus' can never install or replace as an app (.app). This list does not apply to packages: a .pkg from an allowed publisher runs its installer as root, and nothing checks afterwards what it installed or replaced. Each is HARD-DENIED before any confirmation — no prompt, no override. You define this list; there is no built-in default. Match is the app's exact CFBundleIdentifier (case-insensitive). Example entries: com.microsoft.wdav (Defender), com.jamf.management.Jamf, com.crowdstrike.falcon.App.",
+      "items": {
+        "type": "string",
+        "title": "Bundle identifier"
+      },
+      "property_order": 35
+    },
+    "promptBeforeAction": {
+      "type": "boolean",
+      "title": "Confirm before action",
+      "description": "Show the user a confirmation before installing. Applies to installs only: Uninstall with Serberus always confirms, whatever this is set to. Recommended; never silent by default.",
+      "default": true,
+      "property_order": 40
+    },
+    "publisherScope": {
+      "type": "string",
+      "title": "Allowed publishers (install)",
+      "description": "Which publishers can be installed. 'allowlist' (default): only the Team IDs listed below. 'any': any notarized Developer-ID publisher — every user this profile reaches can then install any such software, whose install scripts run as root. Unrecognised values are treated as 'allowlist'.",
+      "enum": [
+        "allowlist",
+        "any"
+      ],
+      "default": "allowlist",
+      "property_order": 22
+    },
+    "allowedPublisherTeamIDs": {
+      "type": "array",
+      "title": "Allowed publisher Team IDs (install)",
+      "description": "The 10-character Apple Developer Team IDs whose software users may install, when 'Allowed publishers' is 'allowlist'. Empty allows none. Allowing a Team ID trusts every package and every app version that team has notarized, within the app replacement rules: an app replaces an installed app only when both are signed by the same team AND have the same bundle ID, never when either is a Serberus app or on the protected list, and an older copy is refused when a newer copy of the same bundle ID is installed under any name in /Applications or /Applications/Utilities (see 'Replacing an app' in SECURITY.md). Packages are not held to these rules. Find a Team ID with: codesign -dv /path/to/App.app (TeamIdentifier), or pkgutil --check-signature /path/to/Installer.pkg.",
+      "items": {
+        "type": "string",
+        "title": "Team ID"
+      },
+      "property_order": 24
+    }
+  }
+}

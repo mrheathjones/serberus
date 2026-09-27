@@ -1,0 +1,104 @@
+{
+  "title": "Serberus \u2014 Rules (authURI sub-domain)",
+  "description": "Author Serberus authorization-right (authURI) rules delivered to the com.herojoneslabs.serberus.rules.authuri sub-domain. The daemon reads every rules sub-domain and unions every com.herojoneslabs.serberus.rules[.suffix] domain. ONE configuration profile per sub-domain: two profiles cannot share a domain's single 'rules' array \u2014 macOS keeps one and silently drops the other. This form only offers the fields an authorization-right rule uses; author sudo rules in a sudo sub-domain.",
+  "__preferencedomain": "com.herojoneslabs.serberus.rules.authuri",
+  "type": "object",
+  "properties": {
+    "policyVersion": {
+      "type": "string",
+      "title": "Policy version",
+      "description": "Semantic version stamped on this Jamf-authored rule set (informational; bump it when you change rules so the change is traceable).",
+      "default": "1.0.0",
+      "property_order": 10
+    },
+    "profilePriority": {
+      "type": "integer",
+      "title": "Profile priority",
+      "description": "Merge order of this rule set against other Serberus profiles on the device. Lower evaluates first.",
+      "default": 50,
+      "minimum": 0,
+      "property_order": 20
+    },
+    "rules": {
+      "type": "array",
+      "title": "Rules",
+      "description": "The list of rules. Add one row per sudo command or authorization right.",
+      "property_order": 30,
+      "items": {
+        "type": "object",
+        "title": "Rule",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Rule ID",
+            "description": "Unique identifier within this rule set (letters, digits, dashes/underscores). Shown in logs and grants \u2014 e.g. 'prompt-jamf-recon'.",
+            "property_order": 10
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "'Sudo command' matches a command run under sudo. 'Authorization right' matches a macOS AuthorizationDB right (System Settings unlock, etc.).",
+            "enum": [
+              "authuri"
+            ],
+            "options": {
+              "enum_titles": [
+                "Authorization right"
+              ]
+            },
+            "default": "authuri",
+            "property_order": 20
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "'Allow' lets the user unlock the authorization right with their OWN password (no Serberus prompt). 'Deny' blocks it. Deny wins over allow at equal priority.",
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "options": {
+              "enum_titles": [
+                "Allow",
+                "Deny"
+              ]
+            },
+            "default": "allow",
+            "property_order": 30
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Human-readable summary shown in the Policy Builder and in prompts.",
+            "property_order": 40
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority",
+            "description": "Evaluation order within this rule set. Lower evaluates first.",
+            "default": 50,
+            "property_order": 50
+          },
+          "authURI": {
+            "type": "string",
+            "title": "Authorization right (Authorization-right only)",
+            "description": "For an Authorization-right rule: the AuthorizationDB right name, e.g. system.preferences.datetime. Leave blank for Sudo rules.",
+            "property_order": 90
+          },
+          "appTeamID": {
+            "type": "string",
+            "title": "App Team ID (per-app rule; ignored in 0.9.0)",
+            "description": "Ignored in Serberus 0.9.0: per-app (App Identity) rules are disabled because the app's identity comes from a value the caller can forge. A rule with this field is logged and skipped, and the right keeps its native definition. Kept so existing profiles still parse. Intended use: the 10-character Apple Team ID of the ONE app a per-app rule applies to. Requires appBundleID.",
+            "property_order": 180
+          },
+          "appBundleID": {
+            "type": "string",
+            "title": "App bundle ID (per-app rule; ignored in 0.9.0)",
+            "description": "Ignored in Serberus 0.9.0 (see appTeamID). Kept so existing profiles still parse. Intended use: the app's code-signing identifier (bundle ID), paired with appTeamID.",
+            "property_order": 181
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus — Managed Login / Background Items (com.apple.servicemanagement).
+
+  WHY THIS MATTERS FOR A SECURITY DAEMON: on macOS 13+, a LaunchDaemon/LaunchAgent
+  triggers the "Background Items Added" notification and appears in
+  System Settings > General > Login Items & Extensions, where the USER CAN TOGGLE
+  IT OFF. serberusd gates sudo — a user must not be able to disable it. This
+  profile marks the Serberus items as MANAGED: they no longer prompt, and the
+  user cannot turn them off.
+
+  RULE CHOICE: RuleType `LabelPrefix` with value `com.herojoneslabs.serberus`
+  matches every Serberus launchd item in one rule —
+    com.herojoneslabs.serberus.daemon           (LaunchDaemon)
+    com.herojoneslabs.serberus.sentinel         (LaunchAgent)
+    com.herojoneslabs.serberus.guardian         (LaunchAgent)
+    com.herojoneslabs.serberus.finderext-elect  (LaunchAgent)
+  and it doesn't depend on which team signed the build. A `TeamIdentifier`
+  rule is the alternative (commented below): it covers everything your team
+  signs, test (Apple Development) and production (Developer ID) builds alike,
+  but you must put your own Team ID in it. See also
+  serberus-managed-login-items.mobileconfig, which uses that form.
+
+  Managed background items are MDM-only — there is no user path to pre-approve a
+  background daemon. Scope to the same Macs as the daemon package.
+
+  PayloadUUIDs are pre-filled; regenerate them (`uuidgen`) if you fork this
+  profile into a second, separately-scoped copy.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.apple.servicemanagement</string>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.servicemanagement.background</string>
+			<key>PayloadUUID</key>
+			<string>57BBCB11-A653-4C0C-B66C-DC9E0C40D496</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadDisplayName</key>
+			<string>Serberus — Managed Background Items</string>
+			<key>Rules</key>
+			<array>
+				<dict>
+					<key>RuleType</key>
+					<string>LabelPrefix</string>
+					<key>RuleValue</key>
+					<string>com.herojoneslabs.serberus</string>
+					<key>Comment</key>
+					<string>Serberus daemon + sentinel — non-disableable, no user prompt</string>
+				</dict>
+				<!--
+				  TeamIdentifier alternative. Use INSTEAD of the LabelPrefix rule
+				  above if you want every current and future item your team signs
+				  covered. Replace M5RQTPC7A2 with your own Team ID:
+				<dict>
+					<key>RuleType</key>
+					<string>TeamIdentifier</string>
+					<key>RuleValue</key>
+					<string>M5RQTPC7A2</string>
+				</dict>
+				-->
+			</array>
+		</dict>
+	</array>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.managed-background-items</string>
+	<key>PayloadUUID</key>
+	<string>082BABD2-256E-47EC-8E8E-3A3ADB4CAEDE</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Managed Background Items</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadEnabled</key>
+	<true/>
+</dict>
+</plist>

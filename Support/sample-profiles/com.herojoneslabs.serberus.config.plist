@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus break-glass daemon config (com.herojoneslabs.serberus.config).
+
+  Deliver BEFORE installing pam_serberus.so (SECURITY.md, "Deploying safely").
+  With no config, a Mac that has never been configured passes sudo through
+  (bootstrap) and Serberus enforces nothing until a usable config arrives.
+  Once a config has been adopted, the daemon keeps a last-known-good snapshot;
+  if the profile is later removed or unusable, pam_serberus keeps enforcing
+  that snapshot (and a corrupt snapshot fails closed: enforce, NO bypass). So
+  the pamBypass below is what keeps admins able to sudo.
+
+  Unlike the rules domain (JSON strings under rules_* keys), this domain uses
+  NATIVE plist values. A value of the wrong type (a JSON string, for example) is reported as
+  degraded (config_invalid) and the config is not adopted: the daemon keeps
+  its last-known-good config, or, on a Mac never configured, stays in
+  bootstrap (sudo passes through, nothing is enforced).
+
+  Delivery: upload this plist to Jamf Pro (Application & Custom Settings ->
+  Upload File, domain com.herojoneslabs.serberus.config) or wrap it in a
+  configuration profile. Serberus reads only managed preferences; a local
+  `defaults import` is ignored.
+
+  Flip enforcementMode to "enforce" only after the pass-through install is
+  verified — and keep the pamBypass admins either way.
+-->
+<plist version="1.0">
+<dict>
+	<!-- Install pass-through first ("monitor"); flip to "enforce" once verified. -->
+	<key>enforcementMode</key>
+	<string>monitor</string>
+
+	<!-- Master switch for grant EXPIRY. Absent/true = ON (the default): an
+	     approved elevation's grant expires after the rule's own duration, or
+	     the default duration below for a rule set to 0 (use the org default),
+	     and then needs re-approval. A rule set to -1, or a rule at 0 while
+	     the default is also 0, gets no grant; each use is evaluated again.
+	     Set to false to turn expiry OFF: the durations still decide whether
+	     a grant is issued, but a grant never expires and lasts as long as the
+	     rule stays installed on the Mac. Uncomment to turn expiry off:
+	<key>timeBoundGrantsEnabled</key>
+	<false/>
+	-->
+
+	<!-- Org-wide default grant duration, in whole minutes, for a matched allow
+	     rule whose own duration is 0 (use the org default): an approved
+	     elevation stays valid this long before requiring re-approval. A
+	     rule's own positive value overrides it; a rule set to -1 never gets a
+	     grant. With timeBoundGrantsEnabled false it still decides whether a
+	     grant is issued, but the grant does not expire. 0-1440; a value
+	     outside that is rejected (0 is used, config_invalid). The expiry is
+	     persisted and survives daemon restart and reboot; once it passes, the
+	     next attempt is evaluated fresh. This never adds the user to the admins
+	     group. 0 / absent = no global default. Uncomment to set (e.g. 15 min):
+	<key>defaultGrantDurationMinutes</key>
+	<integer>15</integer>
+	-->
+
+	<!-- Break-glass: listed users and members of listed groups always fall
+	     through to native sudo (pam_opendirectory), even if the daemon is dead.
+	     Replace the placeholder with a real local admin before delivering. -->
+	<key>pamBypass</key>
+	<dict>
+		<key>groups</key>
+		<array>
+			<string>admin</string>
+		</array>
+		<key>users</key>
+		<array>
+			<string>REPLACE_WITH_A_BREAK_GLASS_ADMIN</string>
+		</array>
+	</dict>
+</dict>
+</plist>

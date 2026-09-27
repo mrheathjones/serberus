@@ -1,0 +1,61 @@
+{
+  "title": "Serberus — Elevation Prompts",
+  "description": "Presentation of the Serberus elevation prompt shown by the menu bar Sentinel. Delivered to the com.herojoneslabs.serberus.prompts preference domain.",
+  "__preferencedomain": "com.herojoneslabs.serberus.prompts",
+  "type": "object",
+  "properties": {
+    "justificationMinLength": {
+      "type": "integer",
+      "title": "Minimum justification length",
+      "description": "Minimum characters for the reason when a rule requires justification (the rule's own requireJustification setting turns it on). 0 = the built-in minimum of 1, so any non-blank reason is accepted.",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 10000,
+      "property_order": 40
+    },
+    "allowButtonLabel": {
+      "type": "string",
+      "title": "Approve button label",
+      "description": "Text of the button that approves the request in the Sentinel's elevation prompt. Leave unset for the default, \"Yes, continue\".",
+      "default": "Yes, continue",
+      "property_order": 50
+    },
+    "denyButtonLabel": {
+      "type": "string",
+      "title": "Deny button label",
+      "description": "Text of the button that declines the request in the Sentinel's elevation prompt. Leave unset for the default, \"No, cancel\".",
+      "default": "No, cancel",
+      "property_order": 60
+    },
+    "brandTitle": {
+      "type": "string",
+      "title": "Brand title (organization name)",
+      "description": "Shown in the audit prompt's header next to the Sentinel icon (e.g. your company name). Empty = the default product name.",
+      "default": "",
+      "property_order": 80
+    },
+    "brandSubtitle": {
+      "type": "string",
+      "title": "Brand subtitle",
+      "description": "One line under the brand title (e.g. \"IT Security\"). Empty = no subtitle.",
+      "default": "",
+      "property_order": 90
+    },
+    "menuBarTopRulesCount": {
+      "type": "integer",
+      "title": "Menu bar — number of top rules",
+      "description": "How many most-used rules the Serberus Sentinel menu-bar popover lists. 0 hides the section; the full rule list is always available in the Serberus window's My Rules tab.",
+      "default": 3,
+      "minimum": 0,
+      "maximum": 50,
+      "property_order": 100
+    },
+    "auditRecipientLabel": {
+      "type": "string",
+      "title": "Audit recipient label",
+      "description": "The team name shown on the approval toast, which reads \"event <id> · sent to <label>\" (e.g. \"Security\", \"Help Desk\"). Empty or unset falls back to \"IT\".",
+      "default": "IT",
+      "property_order": 110
+    }
+  }
+}

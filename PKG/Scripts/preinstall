@@ -1,0 +1,506 @@
+#! /bin/bash
+
+######################################################################
+############## Begin Script Information Block ########################
+######################################################################
+# Name: preinstall
+# Author: Heath Jones
+# Date: 2026-06-13
+# Modified: 2026-09-26
+# Purpose: Serberus PKG preinstall. Runs BEFORE new binaries are laid down:
+#            1. break-glass PREFLIGHT (read-only) — abort before anything
+#               changes when the effective config is enforce-or-absent with
+#               no RESOLVABLE pamBypass user/group (pam_serberus fails closed
+#               and would brick sudo);
+#            2. on an upgrade, the TEARDOWN-FIRST sequence, so a failed or
+#               interrupted upgrade falls back to native sudo rather than to
+#               blanket denial: remove the coarse sudoers drop-in, unwire
+#               sudo_local (marker-aware; stop with the old daemon still
+#               running if a line survives), boot the daemon out, THEN demote JIT
+#               admins with the OLD binary (only when its signature
+#               passes) and re-check the drop-in. The label stays ENABLED,
+#               so a reboot before the postinstall restores the old daemon,
+#               which re-provisions only once the PAM gate is back;
+#            3. after the bootout, remove what a test-ring install left that
+#               the production package does not replace: the flat test
+#               daemon, the test uninstall helpers and their receipts.
+#          Preserves state and grant data; never touches Apple-owned
+#          /etc/pam.d/sudo.
+# Version: 1.6 - (a) On an upgrade, writes the root-only marker
+#          /Library/Application Support/Serberus/.upgrade-in-progress before
+#          the teardown; the new daemon ends open JIT sessions at startup
+#          when it finds it. (b) The post-bootout wait is the daemon's
+#          ExitTimeOut plus 5 s (25 s). (c) An old daemon runs only when
+#          pinned to the recorded install team or the installed PAM module's
+#          team, never to its own.
+#          1.5 - (a) After the bootout the script waits (up to the daemon's
+#          20 s ExitTimeOut) until launchd no longer lists the job; if it is
+#          still loaded, --demote-jit is not run and the manual steps are
+#          logged. (b) The drop-in is checked again straight after the
+#          bootout, before --demote-jit, as well as after it; a drop-in that
+#          survives once sudo_local is unwired re-bootstraps the old daemon,
+#          which removes its own drop-in while the PAM gate is unwired. (c)
+#          The old daemon is pinned to the Team ID the last install recorded
+#          in version.plist, when there is one.
+#          1.4 - (a) A drop-in that survives its removal stops the upgrade
+#          BEFORE sudo_local is unwired (the old daemon keeps running behind
+#          both gates). (b) The old daemon's --demote-jit runs after the
+#          bootout, only after serberus_daemon_trusted (strict signature,
+#          identifier, team); a failure is logged loudly but not fatal, exit 3
+#          (no grant store) is informational. (c) A test-ring install's flat
+#          daemon, uninstall helpers and receipts are removed after the
+#          bootout.
+#          1.3 - Break-glass preflight moved here from the postinstall (it
+#          used to run only after the teardown). Teardown-first upgrade
+#          sequence via the staged pam-lib.sh. umask 022. EXIT trap: an
+#          unexpected exit re-arms the daemon while sudo_local is still
+#          wired.
+#          1.2 - Refuses a target volume other than "/" ($3): Serberus gates
+#          the running system's sudo and AuthorizationDB. Tools by absolute
+#          path (no `which` under root).
+#          1.1 - PATH no longer includes /usr/local/bin, which can be user-writable.
+#          1.0 - Initial Script
+#
+######################################################################
+############## End Script Information Block ##########################
+######################################################################
+
+####################################################################
+############## Begin Define Variables Block ########################
+####################################################################
+##############################
+### Core Defined Variables ###
+### MODIFY AT YOUR OWN RISK ##
+##############################
+
+set -euo pipefail
+umask 022
+
+# System directories only: /usr/local/bin can be user-writable.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Absolute tool paths: this runs as root, so nothing is resolved via PATH.
+readonly BASENAME="/usr/bin/basename"
+readonly DIRNAME="/usr/bin/dirname"
+readonly ID="/usr/bin/id"
+readonly LAUNCHCTL="/bin/launchctl"
+readonly LOGGER="/usr/bin/logger"
+readonly PKGUTIL="/usr/sbin/pkgutil"
+readonly RM="/bin/rm"
+
+readonly ORG_PLIST_DOMAIN="com.herojoneslabs.serberus"
+readonly SCRIPT_NAME=$("${BASENAME}" "$0")
+readonly SCRIPT_DIR=$(cd "$("${DIRNAME}" "$0")" && pwd)
+readonly SCRIPT_VERSION="1.6"
+readonly LOG_LABEL="${ORG_PLIST_DOMAIN}.preinstall"
+
+##################################
+### End Core Defined Variables ###
+##################################
+
+########################################
+######## User Defined Variables ########
+### Place your script variables here ###
+########################################
+
+readonly DAEMON_LABEL="com.herojoneslabs.serberus.daemon"
+readonly LAUNCHD_PLIST="/Library/LaunchDaemons/com.herojoneslabs.serberus.daemon.plist"
+readonly SUDO_LOCAL="/etc/pam.d/sudo_local"
+readonly SUDOERS_DROPIN="/etc/sudoers.d/serberus"
+readonly SUPPORT_DIR="/Library/Application Support/Serberus"
+
+# The installed daemon: production ships a bundle, the test rings a flat
+# binary under the same label. Either may be the OLD daemon an upgrade stops.
+readonly DAEMON_BINARY="/Library/PrivilegedHelperTools/serberusd.app/Contents/MacOS/com.herojoneslabs.serberus.daemon"
+readonly DAEMON_BINARY_FLAT="/Library/PrivilegedHelperTools/com.herojoneslabs.serberus.daemon"
+# Hard deadline for the old daemon's --demote-jit.
+readonly ONESHOT_TIMEOUT=120
+
+# What a test-ring install leaves that this package does not replace: the
+# test uninstall helpers (they would tear down production components) and
+# their receipts.
+readonly TEST_HELPERS=(
+    "${SUPPORT_DIR}/uninstall-serberus-sentinel-test.sh"
+    "${SUPPORT_DIR}/uninstall-serberusd-test.sh"
+    "${SUPPORT_DIR}/uninstall-serberus-pam-test.sh"
+)
+readonly TEST_RECEIPTS=(
+    "${ORG_PLIST_DOMAIN}.sentineltestpkg"
+    "${ORG_PLIST_DOMAIN}.coretestpkg"
+    "${ORG_PLIST_DOMAIN}.testpkg"
+    "${ORG_PLIST_DOMAIN}.pamtestpkg"
+)
+
+# The config the break-glass preflight reads: only the MDM-written managed
+# plist, exactly as Sources/pam_serberus/pam_config.c does.
+readonly MANAGED_CONFIG_PLIST="/Library/Managed Preferences/${ORG_PLIST_DOMAIN}.config.plist"
+
+# Staged next to this script by build-pkg.sh stage_scripts().
+readonly PAM_LIB_PATH="${SCRIPT_DIR}/pam-lib.sh"
+
+# Installer passes the target volume as $3.
+readonly TARGET_VOLUME="${3:-}"
+
+# Set to 1 right before the final exit 0; the EXIT trap acts only without it.
+PREINSTALL_SUCCEEDED=0
+
+# Set to 1 once sudo_local has been unwired, so a drop-in that survives after
+# that point re-bootstraps the old daemon (see remove_sudoers_dropin).
+SUDO_LOCAL_UNWIRED=0
+
+# Set to 0 when the booted-out daemon is still loaded after its ExitTimeOut;
+# its --demote-jit is then skipped (manual steps logged instead).
+DAEMON_GONE=1
+
+##################################
+### End User Defined Variables ###
+##################################
+####################################################################
+############## End Define Variables Block ##########################
+####################################################################
+
+###################################################################################
+############## Begin Function Block ###############################################
+###################################################################################
+##############################
+### Core Defined Functions ###
+### MODIFY AT YOUR OWN RISK ##
+##############################
+
+log_info() {
+    "${LOGGER}" -t "${LOG_LABEL}" -p user.info "[INFO] $*"
+}
+
+log_warn() {
+    "${LOGGER}" -t "${LOG_LABEL}" -p user.warning "[WARN] $*"
+}
+
+log_error() {
+    "${LOGGER}" -t "${LOG_LABEL}" -p user.err "[ERROR] $*"
+}
+
+require_root() {
+    if [[ "$("${ID}" -u)" -ne 0 ]]
+    then
+        log_warn "preinstall not running as root"
+        exit 1
+    fi
+}
+
+# Serberus rewires THIS Mac's sudo and AuthorizationDB; installing onto any
+# other volume is refused before anything is touched.
+require_boot_volume() {
+    if [[ "${TARGET_VOLUME}" != "/" ]]
+    then
+        log_error "Target volume is '${TARGET_VOLUME}', not '/'. Serberus must be installed on the running system."
+        exit 1
+    fi
+}
+
+##################################
+### End Core Defined Functions ###
+##################################
+
+########################################
+######## User Defined Functions ########
+### Place your script functions here ###
+########################################
+
+# The break-glass preflight and the teardown helpers are the shared,
+# unit-tested pam-lib.sh (PKG/tests/test-pam-lib.sh).
+source_pam_lib() {
+    if [[ ! -f "${PAM_LIB_PATH}" ]]
+    then
+        log_error "pam-lib.sh missing from pkg scripts — aborting before anything changes (fail closed)."
+        exit 1
+    fi
+    # shellcheck source=/dev/null
+    source "${PAM_LIB_PATH}"
+}
+
+# Safety net for an UNEXPECTED exit (set -e): whatever step failed, a
+# sudo_local that is still wired keeps its daemon enabled and loaded.
+on_exit() {
+    local status=$?
+    if [[ "${PREINSTALL_SUCCEEDED}" -eq 1 ]]
+    then
+        return 0
+    fi
+    set +e
+    log_error "preinstall exiting with status ${status} before completing"
+    serberus_daemon_rearm_if_wired "${SUDO_LOCAL}" "${DAEMON_LABEL}" "${LAUNCHD_PLIST}" \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    exit "${status}"
+}
+
+# pam_serberus FAILS CLOSED: daemon-unreachable is a hard deny, and in
+# enforce mode every sudo matching no rule denies. Installing it with an
+# enforce-or-absent config and no RESOLVABLE pamBypass would brick sudo for
+# everyone. READ-ONLY, and it runs before anything changes, so an abort here
+# leaves the existing install exactly as it was. Deliver the break-glass
+# config (enforcementMode monitor/audit or a populated pamBypass, domain
+# com.herojoneslabs.serberus.config) first.
+preflight_break_glass() {
+    local mode
+    mode=$(serberus_pam_effective_mode "${MANAGED_CONFIG_PLIST}")
+    local bypass_count
+    bypass_count=$(serberus_pam_bypass_count "${MANAGED_CONFIG_PLIST}")
+    # Unresolvable entries arrive on stderr, one per line — route them into
+    # the unified log so a typo'd break-glass account is visible.
+    local resolvable_count
+    resolvable_count=$(serberus_pam_resolvable_bypass_count \
+        "${MANAGED_CONFIG_PLIST}" \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err))
+    log_info "Effective config: enforcementMode=${mode} pamBypass string members=${bypass_count} resolvable=${resolvable_count}"
+
+    if ! serberus_pam_preflight_break_glass "${MANAGED_CONFIG_PLIST}" 2>/dev/null
+    then
+        log_error "BREAK-GLASS PREFLIGHT FAILED — aborting the install; nothing has been changed."
+        log_error "Effective enforcementMode is enforce (or config absent) with no RESOLVABLE"
+        log_error "pamBypass users or groups (typo'd entries provide zero bypass) — installing"
+        log_error "pam_serberus now would brick sudo. Scope the break-glass config profile"
+        log_error "first, then reinstall."
+        return 1
+    fi
+}
+
+# An upgrade is anything a previous install left that the teardown must see.
+existing_install() {
+    [[ -e "${LAUNCHD_PLIST}" || -e "${SUDOERS_DROPIN}" ]] \
+        || "${LAUNCHCTL}" print "system/${DAEMON_LABEL}" >/dev/null 2>&1 \
+        || serberus_pam_sudo_local_has_module "${SUDO_LOCAL}"
+}
+
+# Coarse gate FIRST: the path-only drop-in must never outlive the PAM gate.
+# Marker-guarded (a foreign file at the path is left alone). A drop-in that is
+# still there after the rm stops the upgrade here, BEFORE sudo_local is
+# unwired: the old daemon keeps running behind both gates.
+remove_sudoers_dropin() {
+    local result
+    result=$(serberus_pam_remove_sudoers_dropin "${SUDOERS_DROPIN}") || result="FAILED"
+    log_info "sudoers drop-in removal: ${result} (${SUDOERS_DROPIN})"
+    if [[ "${result}" == "FAILED" ]]
+    then
+        log_error "${SUDOERS_DROPIN} is STILL present after its removal (immutable flag, or something re-created it)."
+        if [[ "${SUDO_LOCAL_UNWIRED}" -eq 1 ]]
+        then
+            # The PAM gate is already unwired. With it unwired, the old
+            # daemon's provisioning pass removes its own drop-in, so bring it
+            # back rather than leave the drop-in with nothing behind it.
+            log_error "sudo_local is already unwired — re-bootstrapping the old daemon so it removes its drop-in."
+            if ! "${LAUNCHCTL}" print "system/${DAEMON_LABEL}" >/dev/null 2>&1 \
+                && [[ -f "${LAUNCHD_PLIST}" ]]
+            then
+                "${LAUNCHCTL}" bootstrap system "${LAUNCHD_PLIST}" 2>/dev/null \
+                    || log_error "launchctl bootstrap ${LAUNCHD_PLIST} failed"
+            fi
+        else
+            log_error "Stopping the upgrade before sudo_local is unwired."
+        fi
+        log_error "Remove the file by hand (chflags noschg,nouchg first if set), then reinstall."
+        exit 1
+    fi
+}
+
+# Fine gate next, while the OLD daemon still runs. If an active line
+# survives, stop here: the daemon keeps running behind it and the install
+# fails — nothing half-torn-down is left behind.
+unwire_sudo_local() {
+    local result
+    result=$(serberus_pam_remove_sudo_local "${SUDO_LOCAL}") || result="FAILED"
+    log_info "sudo_local unwire: ${result} (${SUDO_LOCAL})"
+    if serberus_pam_sudo_local_has_module "${SUDO_LOCAL}"
+    then
+        log_error "An ACTIVE pam_serberus line remains in ${SUDO_LOCAL} — aborting the upgrade with the"
+        log_error "current daemon still running behind it. Fix ${SUDO_LOCAL} by hand, then reinstall."
+        exit 1
+    fi
+    SUDO_LOCAL_UNWIRED=1
+}
+
+# Demote JIT admins with the OLD daemon while it is still installed: if the
+# upgrade then fails, nothing else would expire their grants. The binary runs
+# only when serberus_daemon_trusted passes (strict signature, Apple anchor,
+# the daemon identifier, the pinned team). Never fatal, but loud: exit 1
+# means users may still be admins; exit 3 means there is no grant store.
+demote_jit_with_old_daemon() {
+    local binary=""
+    local candidate
+    for candidate in "${DAEMON_BINARY}" "${DAEMON_BINARY_FLAT}"
+    do
+        if [[ -x "${candidate}" && ! -L "${candidate}" ]]
+        then
+            binary="${candidate}"
+            break
+        fi
+    done
+    if [[ -z "${binary}" ]]
+    then
+        log_info "No installed daemon binary — no JIT grants to demote"
+        return 0
+    fi
+    if [[ "${DAEMON_GONE}" -ne 1 ]]
+    then
+        log_error "The booted-out daemon is still loaded — NOT running --demote-jit beside it."
+        local line
+        while IFS= read -r line
+        do
+            log_error "${line}"
+        done < <(serberus_daemon_manual_steps demote)
+        return 0
+    fi
+    # Pinned to the team the last install recorded, when it recorded one.
+    local team
+    team=$(serberus_recorded_team 2>/dev/null) || team=""
+    if ! serberus_daemon_trusted "${binary}" "${team}" 2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    then
+        log_error "The installed daemon ${binary} failed its signature check — NOT executing it for --demote-jit."
+        local line
+        while IFS= read -r line
+        do
+            log_error "${line}"
+        done < <(serberus_daemon_manual_steps demote)
+        return 0
+    fi
+    log_info "Demoting JIT admins with the installed daemon (${binary} --demote-jit)"
+    local status=0
+    serberus_run_bounded "${ONESHOT_TIMEOUT}" "${binary}" --demote-jit \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err) || status=$?
+    case "${status}" in
+        0)
+            log_info "JIT admins demoted"
+            ;;
+        3)
+            log_info "No grant store — no JIT admins to demote"
+            ;;
+        *)
+            log_error "--demote-jit FAILED (exit ${status}; 124 = timed out) — continuing the upgrade"
+            local line
+            while IFS= read -r line
+            do
+                log_error "${line}"
+            done < <(serberus_daemon_manual_steps demote)
+            ;;
+    esac
+    return 0
+}
+
+# Tells the NEW daemon, at its first start, that this was an upgrade: it ends
+# the JIT sessions the old daemon left open (the old daemon's --demote-jit
+# below is skipped when it cannot be run). Never fatal.
+write_upgrade_marker() {
+    if serberus_write_upgrade_marker 2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    then
+        log_info "Upgrade marker written (${SERBERUS_UPGRADE_MARKER})"
+    else
+        log_warn "Could not write the upgrade marker ${SERBERUS_UPGRADE_MARKER} — the new daemon will not end open JIT sessions at startup"
+    fi
+}
+
+# The label is deliberately NOT disabled: a reboot before the postinstall
+# brings the old daemon back, and it re-provisions its drop-in only once the
+# PAM gate is wired again.
+bootout_daemon() {
+    if "${LAUNCHCTL}" print "system/${DAEMON_LABEL}" >/dev/null 2>&1
+    then
+        log_info "Booting out running daemon ${DAEMON_LABEL} (label stays enabled)"
+        "${LAUNCHCTL}" bootout "system/${DAEMON_LABEL}" 2>/dev/null || true
+        if ! serberus_launchd_wait_gone "${DAEMON_LABEL}" \
+            2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+        then
+            DAEMON_GONE=0
+            log_error "${DAEMON_LABEL} is still loaded after its bootout"
+        fi
+    else
+        log_info "Daemon not currently loaded"
+    fi
+}
+
+# A production upgrade over a test ring: the flat test daemon, the test
+# uninstall helpers and their receipts are not part of this package and would
+# otherwise stay behind (a later PAM-test install could pin to the stale
+# daemon; a test helper would tear down production components). Runs after
+# the bootout, while the label is unloaded.
+remove_test_ring_leftovers() {
+    if [[ -f "${DAEMON_BINARY_FLAT}" || -L "${DAEMON_BINARY_FLAT}" ]]
+    then
+        log_info "Removing the test-ring daemon ${DAEMON_BINARY_FLAT}"
+        "${RM}" -f "${DAEMON_BINARY_FLAT}"
+    fi
+    local helper
+    for helper in "${TEST_HELPERS[@]}"
+    do
+        if [[ -f "${helper}" || -L "${helper}" ]]
+        then
+            log_info "Removing test uninstall helper ${helper}"
+            "${RM}" -f "${helper}"
+        fi
+    done
+    local receipt
+    for receipt in "${TEST_RECEIPTS[@]}"
+    do
+        if "${PKGUTIL}" --pkg-info "${receipt}" >/dev/null 2>&1
+        then
+            log_info "Forgetting test receipt ${receipt}"
+            "${PKGUTIL}" --forget "${receipt}" >/dev/null 2>&1 || true
+        fi
+    done
+}
+
+##################################
+### End User Defined Functions ###
+##################################
+###################################################################################
+############## End Function Block #################################################
+###################################################################################
+
+#####################################################
+################## Run Script Block #################
+#####################################################
+
+log_info "${SCRIPT_NAME} v${SCRIPT_VERSION} starting"
+
+require_root
+require_boot_volume
+source_pam_lib
+trap on_exit EXIT
+
+# 1. Read-only preflight — BEFORE anything changes.
+if ! preflight_break_glass
+then
+    exit 1
+fi
+
+# 2. Teardown-first on an upgrade: drop-in -> unwire -> bootout (and wait
+#    until it is gone) -> drop-in -> demote JIT (old binary, trusted only) ->
+#    drop-in -> test-ring leftovers. The drop-in is checked straight after the
+#    bootout because the old daemon could re-provision it until then, and
+#    again after the demote, which can take up to ONESHOT_TIMEOUT.
+if existing_install
+then
+    log_info "Existing Serberus install found — tearing the sudo gates down before the daemon"
+    write_upgrade_marker
+    remove_sudoers_dropin
+    unwire_sudo_local
+    bootout_daemon
+    remove_sudoers_dropin
+    demote_jit_with_old_daemon
+    remove_sudoers_dropin
+    remove_test_ring_leftovers
+else
+    log_info "No existing install — nothing to tear down"
+fi
+
+# Intentionally preserved across upgrades:
+#   /Library/Application Support/Serberus/state.plist
+#   /Library/Application Support/Serberus/grants.sqlite
+# Intentionally never modified:
+#   /etc/pam.d/sudo  (Apple-owned, survives OS updates)
+
+PREINSTALL_SUCCEEDED=1
+log_info "${SCRIPT_NAME} completed successfully"
+exit 0
+
+###########################################################
+################## End Script Block #######################
+###########################################################

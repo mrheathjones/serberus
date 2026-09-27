@@ -1,0 +1,30 @@
+name: Question
+description: Ask how Serberus works, or how to deploy or configure it.
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Serberus is an alpha, maintained on a best-effort basis. Check the README, SECURITY.md and docs/ first.
+        Never paste secrets, API credentials or unredacted logs that name your users. To report a security problem, use the private advisory link instead.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you've read or tried
+      description: The docs you checked, commands you ran, and what happened.
+  - type: input
+    id: version
+    attributes:
+      label: Serberus version
+      description: From `serberus status` or /Library/Application Support/Serberus/version.plist, if installed.
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      description: For example 26.1 (25B78).

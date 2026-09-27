@@ -1,0 +1,201 @@
+{
+  "title": "Serberus \u2014 Rules (sudo sub-domain)",
+  "description": "Author Serberus rules delivered to the com.herojoneslabs.serberus.rules.sudo sub-domain. The daemon reads every rules sub-domain and unions every com.herojoneslabs.serberus.rules[.suffix] domain. ONE configuration profile per sub-domain: two profiles cannot share a domain's single 'rules' array \u2014 macOS keeps one and silently drops the other. The suffix is a label only; each rule still declares its own type (sudo or authuri).",
+  "__preferencedomain": "com.herojoneslabs.serberus.rules.sudo",
+  "type": "object",
+  "properties": {
+    "policyVersion": {
+      "type": "string",
+      "title": "Policy version",
+      "description": "Semantic version stamped on this Jamf-authored rule set (informational; bump it when you change rules so the change is traceable).",
+      "default": "1.0.0",
+      "property_order": 10
+    },
+    "profilePriority": {
+      "type": "integer",
+      "title": "Profile priority",
+      "description": "Merge order of this rule set against other Serberus profiles on the device. Lower evaluates first.",
+      "default": 50,
+      "minimum": 0,
+      "property_order": 20
+    },
+    "rules": {
+      "type": "array",
+      "title": "Rules",
+      "description": "The list of rules. Add one row per sudo command or authorization right.",
+      "property_order": 30,
+      "items": {
+        "type": "object",
+        "title": "Rule",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Rule ID",
+            "description": "Unique identifier within this rule set (letters, digits, dashes/underscores). Shown in logs and grants \u2014 e.g. 'prompt-jamf-recon'.",
+            "property_order": 10
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "'Sudo command' matches a command run under sudo. 'Authorization right' matches a macOS AuthorizationDB right (System Settings unlock, etc.).",
+            "enum": [
+              "sudo",
+              "authuri"
+            ],
+            "options": {
+              "enum_titles": [
+                "Sudo command",
+                "Authorization right"
+              ]
+            },
+            "default": "sudo",
+            "property_order": 20
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "'Allow' grants a sudo command (silently or via prompt, per Elevation), or lets the user unlock an authorization right with their OWN password (no Serberus prompt). 'Deny' blocks. Deny wins over allow at equal priority and is never cached.",
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "options": {
+              "enum_titles": [
+                "Allow",
+                "Deny"
+              ]
+            },
+            "default": "allow",
+            "property_order": 30
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Human-readable summary shown in the Policy Builder and in prompts.",
+            "property_order": 40
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority",
+            "description": "Evaluation order within this rule set. Lower evaluates first.",
+            "default": 50,
+            "property_order": 50
+          },
+          "commandPattern": {
+            "type": "string",
+            "title": "Command path (Sudo only)",
+            "description": "For a Sudo rule: the canonical executable path this rule matches, e.g. /usr/local/bin/jamf. Required for Sudo unless Match type is 'Any command'. Leave blank for Authorization-right rules.",
+            "property_order": 60
+          },
+          "matchType": {
+            "type": "string",
+            "title": "Match type (Sudo only)",
+            "description": "How the command path is interpreted. 'Exact' is strongly recommended; prefix/glob/regex are broader and easier to over-authorize.",
+            "enum": [
+              "exact",
+              "prefix-regex",
+              "glob",
+              "regex",
+              "any"
+            ],
+            "options": {
+              "enum_titles": [
+                "Exact path",
+                "Path prefix + arg regex",
+                "Glob",
+                "Regex",
+                "Any command"
+              ]
+            },
+            "default": "exact",
+            "property_order": 70
+          },
+          "argPattern": {
+            "type": "string",
+            "title": "Argument regex (Sudo, optional)",
+            "description": "For a Sudo rule: a regular expression applied to the first argument (e.g. ^recon$ to allow only 'jamf recon'). Leave blank to allow any arguments.",
+            "property_order": 80
+          },
+          "authURI": {
+            "type": "string",
+            "title": "Authorization right (Authorization-right only)",
+            "description": "For an Authorization-right rule: the AuthorizationDB right name, e.g. system.preferences.datetime. Leave blank for Sudo rules.",
+            "property_order": 90
+          },
+          "elevationType": {
+            "type": "string",
+            "title": "Elevation (Sudo allow only)",
+            "description": "'Silent' grants without interaction. 'Prompt' requires the user to approve via the Serberus Sentinel before the grant is issued. Sudo rules only: an Authorization-right allow always asks for the user's own password, and this field is ignored for it.",
+            "enum": [
+              "silent",
+              "prompt"
+            ],
+            "options": {
+              "enum_titles": [
+                "Silent",
+                "Prompt user"
+              ]
+            },
+            "default": "silent",
+            "property_order": 100
+          },
+          "logArguments": {
+            "type": "boolean",
+            "title": "Log arguments (Sudo only)",
+            "description": "When true, redacted command arguments are included in decision log events.",
+            "default": false,
+            "property_order": 120
+          },
+          "requireJustification": {
+            "type": "boolean",
+            "title": "Require justification (Sudo only)",
+            "description": "When true, the user must supply a justification before the request is approved.",
+            "default": false,
+            "property_order": 130
+          },
+          "maxGrantDurationSeconds": {
+            "type": "integer",
+            "title": "Grant duration (seconds, Sudo only)",
+            "description": "-1 = evaluate every time (never grant); 0 = use the org default; N = grant for N seconds",
+            "default": 0,
+            "minimum": -1,
+            "maximum": 86400,
+            "property_order": 140
+          },
+          "cacheSeconds": {
+            "type": "integer",
+            "title": "Cache (seconds, Sudo only, optional)",
+            "description": "Per-rule cache TTL for an allow decision. Leave unset to use the daemon's global sudo cache; 0 = never cache this rule. Ignored for deny.",
+            "minimum": 0,
+            "maximum": 86400,
+            "property_order": 150
+          },
+          "requiredTeamID": {
+            "type": "string",
+            "title": "Required Team ID (Sudo only, optional)",
+            "description": "When set, the requesting binary's code-signing Team ID must equal this value.",
+            "property_order": 160
+          },
+          "appTeamID": {
+            "type": "string",
+            "title": "App Team ID (per-app rule; ignored in 0.9.0)",
+            "description": "Ignored in Serberus 0.9.0: per-app (App Identity) rules are disabled because the app's identity comes from a value the caller can forge. A rule with this field is logged and skipped, and the right keeps its native definition. Kept so existing profiles still parse. Intended use: the 10-character Apple Team ID of the ONE app a per-app rule applies to. Requires appBundleID.",
+            "property_order": 180
+          },
+          "appBundleID": {
+            "type": "string",
+            "title": "App bundle ID (per-app rule; ignored in 0.9.0)",
+            "description": "Ignored in Serberus 0.9.0 (see appTeamID). Kept so existing profiles still parse. Intended use: the app's code-signing identifier (bundle ID), paired with appTeamID.",
+            "property_order": 181
+          },
+          "requiredBinaryHash": {
+            "type": "string",
+            "title": "Required binary SHA-256 (Sudo only, optional)",
+            "description": "When set, the requesting binary's SHA-256 must equal this value.",
+            "property_order": 170
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Serberus — Debug Telemetry",
+  "description": "Opt-in per-device debug telemetry. Delivered to the com.herojoneslabs.serberus.debug preference domain. Scope this profile to a smart group ONLY while actively debugging: while it is present with Enable debug telemetry = true, the daemon publishes the recent individual denial/prompt decisions (last 24h) to the EA path so Serberus Commander can list them on the device record. Removing this profile withdraws that data (the daemon deletes the EA-path file). The daemon always keeps a local copy regardless; this only controls what reaches Jamf inventory.",
+  "__preferencedomain": "com.herojoneslabs.serberus.debug",
+  "type": "object",
+  "properties": {
+    "debugModeEnabled": {
+      "type": "boolean",
+      "title": "Enable debug telemetry",
+      "description": "When true, the daemon publishes the recent denial/prompt decision list (redacted; command/right, user, time, outcome) to the EA_Serberus_Recent_Events extension attribute for this Mac. When false or this profile is removed, the published file is deleted and nothing per-decision reaches Jamf.",
+      "default": false,
+      "property_order": 10
+    }
+  }
+}

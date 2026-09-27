@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus 1:1 curated-sudo enrollment config profile
+  (com.herojoneslabs.serberus.config).
+
+  DEPLOYMENT MODEL: COMPUTER-LEVEL (System-scoped). PayloadScope=System, so
+  this is a device/computer profile — the daemon reads it from
+  /Library/Managed Preferences/com.herojoneslabs.serberus.config.plist. It is
+  intended for 1:1 Macs where exactly one standard user owns the machine.
+
+  $USERNAME is a JAMF PAYLOAD VARIABLE. Jamf substitutes it with the assigned
+  user's shortname at profile-deploy time, so sudoEnrollment.users becomes
+  ["<that user's shortname>"] on-device. If substitution does NOT happen (e.g.
+  no assigned user, or a non-Jamf delivery), the literal token "$USERNAME" is
+  delivered instead — and the daemon safely REJECTS "$USERNAME" as a principal
+  (it is not a real account), enrolling nobody. Fail-safe either way.
+
+  Every value below is a NATIVE plist type (string / dict / array-of-string) —
+  NEVER a JSON string. A value of the wrong type (a JSON string, for example) is reported as
+  degraded (config_invalid) and the config is not adopted: the daemon keeps
+  its last-known-good config, or, on a Mac never configured, stays in
+  bootstrap (sudo passes through, nothing is enforced).
+
+  enforcementMode is "enforce" (full policy enforcement — the only mode with
+  security guarantees). MONITOR-MODE NOTE: for a first pass, an operator may
+  change enforce -> monitor here to observe (log-only) before enforcing; flip
+  back to "enforce" once behavior is verified.
+
+  pamBypass groups=[admin] is break-glass: local admins always fall through to
+  native sudo (pam_opendirectory) even if the daemon is dead — so this profile
+  can never lock admins out of the box.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.config</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>enforcementMode</key>
+								<string>enforce</string>
+								<key>pamBypass</key>
+								<dict>
+									<key>groups</key>
+									<array>
+										<string>admin</string>
+									</array>
+								</dict>
+								<key>sudoEnrollment</key>
+								<dict>
+									<key>users</key>
+									<array>
+										<string>$USERNAME</string>
+									</array>
+								</dict>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Config — 1:1 curated sudo ($USERNAME)</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.config.1to1-username</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>65AE9E21-1F17-4EF5-8DE2-8351FC299809</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus daemon configuration for 1:1 Macs: enforce mode, admin PAM break-glass, and curated-sudo enrollment of the Jamf-assigned standard user ($USERNAME).</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Config 1:1 ($USERNAME)</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.config.1to1-username</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>98312206-033F-443C-A479-09300F3511F0</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

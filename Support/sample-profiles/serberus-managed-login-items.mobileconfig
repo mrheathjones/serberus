@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus — Managed Login Items (Service Management).
+
+  WHY: on macOS 13+ (Ventura), installing Serberus registers a LaunchDaemon and
+  LaunchAgents, which triggers the "Serberus … added items that can run in the
+  background" notification and lists the items in System Settings > General >
+  Login Items (where a user could disable them). This is macOS Background Task
+  Management — NOT PPPC/TCC, so a PPPC profile does not affect it.
+
+  This profile ALLOWLISTS every Serberus background item by TEAM IDENTIFIER
+  (the maintainer's, M5RQTPC7A2; replace it with the team that signs your
+  build), which both:
+    • suppresses the "background items added" notification, and
+    • marks them MANAGED so a standard user can't disable them (desirable for a
+      security agent — the daemon / Sentinel / Guardian can't be turned off from
+      Login Items).
+
+  One TeamIdentifier rule covers ALL of them:
+    /Library/LaunchDaemons/com.herojoneslabs.serberus.daemon.plist          (daemon)
+    /Library/LaunchAgents/com.herojoneslabs.serberus.sentinel.plist         (Sentinel)
+    /Library/LaunchAgents/com.herojoneslabs.serberus.guardian.plist         (Guardian)
+    /Library/LaunchAgents/com.herojoneslabs.serberus.finderext-elect.plist  (Finder election)
+    + the Finder Sync extension (com.herojoneslabs.serberus.intel.finderext)
+
+  This is SEPARATE from — and in addition to — the Full Disk Access PPPC profile
+  (serberus-daemon-fda-pppc-test.mobileconfig or
+  serberus-daemon-fda-pppc-production.mobileconfig) that the daemon's
+  EndpointSecurity client requires.
+
+  DEPLOY via Jamf as a custom configuration profile carrying this
+  com.apple.servicemanagement payload (or Jamf Pro's native "Managed Login Items"
+  payload if your version offers it). Regenerate the PayloadUUIDs on upload.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.apple.servicemanagement</string>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.servicemanagement.login</string>
+			<key>PayloadUUID</key>
+			<string>5E7B0000-0000-4000-A000-000000000002</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadDisplayName</key>
+			<string>Serberus — Managed Login Items</string>
+			<key>Rules</key>
+			<array>
+				<dict>
+					<key>RuleType</key>
+					<string>TeamIdentifier</string>
+					<key>RuleValue</key>
+					<string>M5RQTPC7A2</string>
+					<key>Comment</key>
+					<string>Serberus daemon + Sentinel/Guardian/Finder-election LaunchAgents + Finder extension</string>
+				</dict>
+			</array>
+		</dict>
+	</array>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Managed Login Items</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.managed-login-items</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>5E7B0000-0000-4000-A000-000000000001</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+	<key>PayloadScope</key>
+	<string>System</string>
+</dict>
+</plist>

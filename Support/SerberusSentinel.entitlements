@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Private marker the daemon's XPCConnectionValidator requires of the Sentinel
+         before honoring its XPC calls (BundleConfig.sentinelEntitlement). It is a
+         custom (non-Apple) key: a Developer ID signature carries it without a
+         provisioning profile, but an Apple Development signature cannot (no
+         profile can be minted for it, and AMFI kills the app at launch). So it is
+         applied only in Release / Developer ID signing (project.yml;
+         SENTINEL_WITH_ENTITLEMENT=1 in PKG/build-sentinel-app-pkg.sh), and a
+         daemon serving an Apple Development build runs with
+         SERBERUS_DEV_SKIP_SENTINEL_ENTITLEMENT=1. -->
+    <key>com.herojoneslabs.serberus.is-ui-sentinel</key>
+    <true/>
+</dict>
+</plist>

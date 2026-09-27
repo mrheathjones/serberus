@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for serberusd. NOT used by any build: the Xcode serberusd
+  target signs without entitlements (a command-line tool cannot embed the
+  provisioning profile the restricted ES entitlement needs, so AMFI would kill
+  it), and the shipped bundle is signed with
+  Support/serberusd-distribution.entitlements. Kept as a record of the one
+  code entitlement the daemon uses.
+
+  The daemon needs no special code entitlements in V1:
+    * Hardened Runtime is a signing flag, not an entitlement.
+    * The Mach service is granted via the LaunchDaemon plist's MachServices
+      key, not an entitlement.
+    * System Keychain access for the HMAC keys works for a root
+      daemon without a keychain-access-group entitlement.
+    * Full Disk Access is granted via a PPPC configuration profile, not a
+      code entitlement.
+
+  The Endpoint Security client entitlement is granted by Apple on request, per
+  team. Embedding a *restricted* entitlement requires a provisioning
+  profile that authorizes it; a profile-less local Apple-Development signature
+  cannot carry it (AMFI rejects at launch). The daemon tolerates ESF being
+  unavailable (logs and runs without exec enforcement), so unit/integration
+  tests and the prompt round-trip do not require it.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.developer.endpoint-security.client</key>
+    <true/>
+</dict>
+</plist>

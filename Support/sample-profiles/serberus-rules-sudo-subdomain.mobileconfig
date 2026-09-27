@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus sudo rules in the DEDICATED sub-domain com.herojoneslabs.serberus.rules.sudo.
+  The daemon reads every com.herojoneslabs.serberus.rules.<suffix> sub-domain
+  alongside the base domain. Because this native `rules`
+  array lives in its OWN domain, it composes with an authuri native array in
+  com.herojoneslabs.serberus.rules.authuri (and with the base domain) instead of
+  colliding on the single `rules` key. Pair with serberus-rules-authuri-subdomain.mobileconfig.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.rules.sudo</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>policyVersion</key>
+								<string>1.0.0</string>
+								<key>profilePriority</key>
+								<integer>50</integer>
+								<key>rules</key>
+								<array>
+									<dict>
+										<key>id</key>
+										<string>allow-jamf-recon</string>
+										<key>type</key>
+										<string>sudo</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>commandPattern</key>
+										<string>/usr/local/bin/jamf</string>
+										<key>matchType</key>
+										<string>exact</string>
+										<key>argPattern</key>
+										<string>^recon$</string>
+										<key>description</key>
+										<string>Allow enrolled standard user to run sudo jamf recon</string>
+										<key>elevationType</key>
+										<string>silent</string>
+										<key>logArguments</key>
+										<true/>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+									<dict>
+										<key>id</key>
+										<string>allow-jamf-log</string>
+										<key>type</key>
+										<string>sudo</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>commandPattern</key>
+										<string>/usr/local/bin/jamf</string>
+										<key>matchType</key>
+										<string>exact</string>
+										<key>argPattern</key>
+										<string>^log$</string>
+										<key>description</key>
+										<string>Allow enrolled standard user to run sudo jamf log</string>
+										<key>elevationType</key>
+										<string>silent</string>
+										<key>logArguments</key>
+										<true/>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+								</array>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Rules — sudo (sub-domain)</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.rules.sudo.native</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>84B030F5-AC7E-45D5-9B30-C8076DE4E6C5</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus sudo rules (native array) in the .rules.sudo sub-domain — composes with .rules.authuri.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Rules sudo (sub-domain)</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.rules.sudo.native</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>5441E3B9-EA2E-441F-B1D3-BDD58D22F5CE</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

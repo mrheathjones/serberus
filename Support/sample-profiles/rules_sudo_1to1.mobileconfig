@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.rules</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>rules_sudo_1to1</key>
+								<string>{"schemaVersion":"1.0","policyVersion":"1.0.0","profileKey":"rules_sudo_1to1","profilePriority":50,"rules":[{"id":"deny-shutdown","type":"sudo","action":"deny","description":"Explicitly deny sudo /sbin/shutdown","priority":5,"match":{"commandPattern":"/sbin/shutdown","matchType":"exact"},"conditions":{"requireJustification":false,"maxGrantDurationSeconds":0},"elevation":{"type":"silent","logArguments":false}},{"id":"prompt-echo","type":"sudo","action":"allow","description":"Prompt the user to approve sudo /bin/echo","priority":10,"match":{"commandPattern":"/bin/echo","matchType":"exact"},"conditions":{"requireJustification":false,"maxGrantDurationSeconds":300},"elevation":{"type":"prompt","logArguments":true}},{"id":"silent-true","type":"sudo","action":"allow","description":"Silently allow sudo /usr/bin/true","priority":20,"match":{"commandPattern":"/usr/bin/true","matchType":"exact"},"conditions":{"requireJustification":false,"maxGrantDurationSeconds":0},"elevation":{"type":"silent","logArguments":false}},{"id":"prompt-jamf-recon","type":"sudo","action":"allow","description":"Prompt the user to approve sudo /usr/local/bin/jamf recon","priority":30,"match":{"commandPattern":"/usr/local/bin/jamf","matchType":"exact","argPattern":"^recon$"},"conditions":{"requireJustification":false,"maxGrantDurationSeconds":300},"elevation":{"type":"prompt","logArguments":true}}]}</string>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Rules — rules_sudo_1to1</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.rules.rules_sudo_1to1</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>C1D2C05D-2B26-4190-80B3-35C33CEF0688</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus sudo rule profile (1:1 computer-level test set).</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — rules_sudo_1to1</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.rules.rules_sudo_1to1</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>165D1AD1-EEA3-438D-860B-A6632686792E</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

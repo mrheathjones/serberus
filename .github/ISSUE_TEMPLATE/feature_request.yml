@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest a change or a new capability.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Serberus to do?
+  - type: textarea
+    id: security
+    attributes:
+      label: Security impact
+      description: Does this change who can get elevated privileges, or when Serberus steps aside? Serberus fails closed; say how your idea keeps that true.

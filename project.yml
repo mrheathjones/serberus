@@ -1,0 +1,649 @@
+# Serberus — Xcode project spec (XcodeGen).
+#
+# Contributors do NOT need XcodeGen: the generated Serberus.xcodeproj is
+# committed — just open it. This file is the maintainer-friendly source of
+# truth; regenerate with `xcodegen generate` after changing targets.
+#
+# Shared code is built as static libraries so the apps and command-line tools
+# end up as self-contained binaries (no embedded frameworks to deploy).
+
+name: Serberus
+
+# DEVELOPMENT_TEAM comes from Config/Local.xcconfig (gitignored), included by
+# Config/Signing.xcconfig. See Config/Local.xcconfig.example.
+configFiles:
+  Debug: Config/Signing.xcconfig
+  Release: Config/Signing.xcconfig
+
+options:
+  bundleIdPrefix: com.herojoneslabs.serberus
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # Must equal the repository's VERSION file (PKG/tests/test-sentinel-lib.sh
+    # checks it).
+    MARKETING_VERSION: "0.9.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+  configs:
+    Release:
+      # Works around a Swift cross-module-optimization "circular reference"
+      # compiler bug in release whole-module builds.
+      OTHER_SWIFT_FLAGS: "-disable-cmo"
+
+targets:
+
+  # ---- Shared engine ----
+  PrivMgrCore:
+    type: library.static
+    platform: macOS
+    sources: [Sources/PrivMgrCore]
+
+  # ---- C shim (audit-token SPI + shared XPC keys), importable as a module ----
+  SerberusXPCShim:
+    type: library.static
+    platform: macOS
+    sources: [Sources/SerberusXPCShim]
+    settings:
+      base:
+        MODULEMAP_FILE: Sources/SerberusXPCShim/include/module.modulemap
+        HEADER_SEARCH_PATHS: [Sources/SerberusXPCShim/include]
+
+  # ---- Shared design-system / icon identity (SwiftUI vector marks + glyphs) ----
+  SerberusUI:
+    type: library.static
+    platform: macOS
+    sources: [Sources/SerberusUI]
+
+  # ---- Component logic libraries (unit-tested) ----
+  SerberusDaemonCore:
+    type: library.static
+    platform: macOS
+    sources: [Sources/SerberusDaemonCore]
+    dependencies:
+      - target: PrivMgrCore
+        link: false
+      - target: SerberusXPCShim
+        link: false
+
+  PolicyBuilderCore:
+    type: library.static
+    platform: macOS
+    sources: [Sources/PolicyBuilderCore]
+    dependencies:
+      - target: PrivMgrCore
+        link: false
+
+  SerberusSentinelCore:
+    type: library.static
+    platform: macOS
+    sources: [Sources/SerberusSentinelCore]
+    dependencies:
+      - target: PrivMgrCore
+        link: false
+      - target: SerberusXPCShim
+        link: false
+
+  SerberusCLICore:
+    type: library.static
+    platform: macOS
+    sources: [Sources/SerberusCLICore]
+    dependencies:
+      - target: PrivMgrCore
+        link: false
+
+  # Log capture / diagnostics bundle logic (unit-tested).
+  SerberusIntelCore:
+    type: library.static
+    platform: macOS
+    sources: [Sources/SerberusIntelCore]
+    dependencies:
+      - target: PrivMgrCore
+        link: false
+
+  # ---- Apps ----
+  SerberusCommander:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/SerberusCommander
+      # Jamf setup files bundled so Settings can hand them out for a new
+      # deployment (folder references → copied whole into Resources/, enumerated
+      # at runtime by JamfSetupFiles).
+      - path: Support/jamf-extension-attributes
+        type: folder
+        buildPhase: resources
+      - path: Support/jamf-schemas
+        type: folder
+        buildPhase: resources
+      - path: Support/sample-rules
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.herojoneslabs.serberus.commander
+        # PRODUCT_NAME carries the space so the bundle is "Serberus Commander.app"
+        # (the target/scheme stay `SerberusCommander`; the bundle ID is unchanged,
+        # so the daemon's XPC caller validation is unaffected).
+        PRODUCT_NAME: Serberus Commander
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Serberus Commander
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: PolicyBuilderCore
+      - target: PrivMgrCore
+      - target: SerberusUI
+
+  # ---- Full user-facing app: "Serberus Sentinel.app" (Dock + App menu) ----
+  # Regular app (NOT LSUIElement), installed to /Applications. Its single window
+  # carries the My Activity / My Rules / Intel tabs. It is a SEPARATE process
+  # from the menubar agent below: quitting this app leaves the agent (and its
+  # always-on audit prompts) running; launching it starts the agent if needed.
+  #
+  # It reuses the RETIRED standalone-Intel bundle ID (…serberus.intel) on
+  # purpose — the daemon already trusts that identity for the read-only `.intel`
+  # interface, so the Intel tab works with NO daemon change. It never calls the
+  # `.sentinel` interface: My Rules / My Activity read the shared rules-cache and
+  # history the agent writes (SentinelRulesStore / ElevationHistoryStore, same
+  # literal support path in both processes), refreshed on a light timer. Hence
+  # it carries NO is-ui-sentinel entitlement (the `.intel` caller requires none).
+  SerberusSentinel:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/SerberusSentinel
+      - Sources/SerberusSentinelShared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.herojoneslabs.serberus.intel
+        # PRODUCT_NAME carries the space so the bundle is "Serberus Sentinel.app"
+        # (Finder + Dock + App menu all read "Serberus Sentinel"). It also names
+        # the executable "Serberus Sentinel" (17 chars) — the app pkg therefore
+        # stops this app with `pkill -f <full bundle path>`, NOT `pgrep -x`
+        # (process-name matching truncates at 16 chars). The daemon validates by
+        # bundle ID + team + designated requirement, none of which the product
+        # name affects.
+        PRODUCT_NAME: Serberus Sentinel
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Serberus Sentinel
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: SerberusSentinelCore
+      - target: PrivMgrCore
+      - target: SerberusUI
+      # Serberus Intel (live authorizations, log history, support-bundle
+      # export) is the window's Intel tab, reached over the read-only `.intel`
+      # XPC interface.
+      - target: SerberusIntelCore
+      # The Finder Sync extension rides inside this /Applications app (Apple
+      # requires the appex id be prefixed by the container id, hence `.intel.…`).
+      # embed → Contents/PlugIns/SerberusFinderExtension.appex; the pkg re-signs
+      # it inner-first with Developer ID (see build-sentinel-app-pkg.sh).
+      - target: SerberusFinderExtension
+        embed: true
+        codeSign: true
+
+  # ---- Menubar agent: "Serberus Sentinel Agent.app" (LSUIElement, no Dock) ----
+  # Always-on LaunchAgent, installed HIDDEN under /Library/Application Support so
+  # /Applications shows only the one user-facing full app. Owns the
+  # security-critical surface: registers with the daemon (bundle
+  # com.herojoneslabs.serberus.sentinel → `.sentinel` interface), presents the
+  # audit prompts pushed to it, and writes the shared history/rules caches the
+  # full app reads. Keeps the is-ui-sentinel entitlement (Release only — see
+  # below); the daemon still pins bundle ID + Team ID + Hardened Runtime + the
+  # designated requirement.
+  SerberusSentinelAgent:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/SerberusSentinelAgent
+      - Sources/SerberusSentinelShared
+    # Explicit Info.plist (via xcodegen `info:`) so the agent can declare the
+    # "Install with Serberus" Finder Service (NSServices — a complex array that
+    # GENERATE_INFOPLIST_FILE can't express). xcodegen fills the CFBundle* basics
+    # from the build settings; the rest is here.
+    info:
+      path: Support/Generated/SerberusSentinelAgent-Info.plist
+      properties:
+        CFBundleDisplayName: Serberus Sentinel Agent
+        # Version from the project-wide build settings (MARKETING_VERSION
+        # matches the repository's VERSION file; PKG/tests checks it).
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: ""
+        NSHighResolutionCapable: true
+        LSUIElement: true
+        # Finder presents an NSService in its Services / Quick-Actions submenu
+        # (categorized under "Files and Folders" — NOT top-level; top-level needs
+        # a Finder Sync extension) ONLY when the declaration carries BOTH:
+        #   • NSRequiredContext — Apple's Services Properties: "Always include
+        #     this property, even when you do not require any filtering (empty
+        #     dictionary)… Otherwise the system registers your service, but does
+        #     not automatically present it in the Services menu." The empty dict
+        #     also flips a non-com.apple service to ACTIVE-BY-DEFAULT, so no
+        #     per-user enable and no MDM pbs profile are needed.
+        #   • NSSendTypes — the base pasteboard type Finder matches the selection
+        #     against (public.file-url). NSSendFileTypes is ONLY a UTI *filter*
+        #     layered on top (narrows to .pkg/.app); on its own it is not a
+        #     matcher, so a decl with NSSendFileTypes but no NSSendTypes registers
+        #     in lsregister yet never appears. THAT was the bug.
+        NSServices:
+          - NSMenuItem:
+              default: Install with Serberus
+            NSMessage: installWithSerberus
+            NSPortName: Serberus Sentinel Agent
+            NSRequiredContext: {}
+            NSSendTypes:
+              - public.file-url
+            NSSendFileTypes:
+              - com.apple.installer-package-archive
+              - com.apple.application-bundle
+          - NSMenuItem:
+              default: Uninstall with Serberus
+            NSMessage: uninstallWithSerberus
+            NSPortName: Serberus Sentinel Agent
+            NSRequiredContext: {}
+            NSSendTypes:
+              - public.file-url
+            NSSendFileTypes:
+              - com.apple.application-bundle
+    settings:
+      base:
+        # Spaced product name → bundle "Serberus Sentinel Agent.app", executable
+        # "Serberus Sentinel Agent". Hidden under /Library/Application Support,
+        # so the name is cosmetic, but kept consistent with the full app. The
+        # pkg stops it with `pkill -f <bundle path>` and the LaunchAgent execs it
+        # by full path, so the spaced/long executable name is fine. Bundle ID is
+        # unchanged (…sentinel) — the daemon's trust keys on that, not the name.
+        PRODUCT_NAME: Serberus Sentinel Agent
+        PRODUCT_BUNDLE_IDENTIFIER: com.herojoneslabs.serberus.sentinel
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # -lbsm: FinderBridgeListener imports SerberusXPCShim, whose object file
+        # references libbsm's audit_token_to_euid (via serberus_audit_token_euid),
+        # so the agent must link libbsm just like the daemon does.
+        OTHER_LDFLAGS: [-lsqlite3, -lbsm]
+      configs:
+        # The custom `com.herojoneslabs.serberus.is-ui-sentinel` entitlement (the
+        # daemon's XPCConnectionValidator marker) is applied only in Release.
+        # Xcode's automatic *Apple Development* signing used for Debug/⌘R cannot
+        # mint a managed profile for a non-Apple entitlement, so including it in
+        # Debug breaks the build. Production is signed with Developer ID (no
+        # managed profile), which carries arbitrary entitlements fine; for a
+        # local Debug round-trip run the dev daemon with
+        # SERBERUS_DEV_SKIP_SENTINEL_ENTITLEMENT=1.
+        Release:
+          CODE_SIGN_ENTITLEMENTS: Support/SerberusSentinel.entitlements
+    dependencies:
+      - target: SerberusSentinelCore
+      - target: PrivMgrCore
+      - target: SerberusUI
+      # Direct dep so FinderBridgeListener can `import SerberusXPCShim` (the raw
+      # xpc_* symbols + serberus_xpc_connection_copy_audit_token). It was already
+      # linked transitively via SerberusSentinelCore; make it importable directly.
+      - target: SerberusXPCShim
+
+  # NOTE: the standalone SerberusIntel app was RETIRED; its live
+  # authorizations / log history / support-bundle export are now the Intel tab
+  # of the full SerberusSentinel app above (SerberusIntelCore dependency). The
+  # Intel VIEW files live in Sources/SerberusSentinel; the logic stays in the
+  # SerberusIntelCore library (still unit-tested by SerberusIntelCoreTests). The
+  # full app inherits the retired Intel bundle ID, so it is the `.intel` caller.
+
+  # ---- Finder Sync extension: top-level "Install/Uninstall with Serberus" ----
+  # A sandboxed app extension embedded in the /Applications full app. It provides
+  # the TOP-LEVEL right-click items (with the Sentinel icon) that a plain
+  # NSService cannot. It is NOT a daemon principal: it forwards the selected path
+  # to the agent's audit-token-authenticated bridge, which routes it through the
+  # same gated install/uninstall path. Apple requires an appex bundle id prefixed
+  # by its container (…intel), and the OS refuses a non-sandboxed FinderSync.
+  SerberusFinderExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Sources/SerberusFinderExtension
+    info:
+      path: Support/Generated/SerberusFinderExtension-Info.plist
+      properties:
+        CFBundleDisplayName: Serberus Finder Extension
+        # Version from the project-wide build settings (MARKETING_VERSION
+        # matches the repository's VERSION file; PKG/tests checks it).
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: ""
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.FinderSync
+          # Bare Obj-C runtime name — matches @objc(FinderSyncExtension) exactly,
+          # so Finder's NSClassFromString lookup resolves regardless of module.
+          NSExtensionPrincipalClass: FinderSyncExtension
+    settings:
+      base:
+        PRODUCT_NAME: SerberusFinderExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.herojoneslabs.serberus.intel.finderext
+        ENABLE_HARDENED_RUNTIME: YES        # the daemon-side validator requires it
+        ENABLE_APP_SANDBOX: YES             # the OS refuses a non-sandboxed FinderSync
+        CODE_SIGN_ENTITLEMENTS: Support/SerberusFinderExtension.entitlements
+        SKIP_INSTALL: YES                   # rides inside the app; not installed standalone
+    dependencies:
+      - target: PrivMgrCore                 # BundleConfig ids + FinderBridgeWire
+      - target: SerberusXPCShim             # raw xpc_* client symbols
+
+  # ---- Guardian: invisible watchdog for the Sentinel menu-bar agent ----
+  # A tiny LSUIElement agent that watches the Sentinel and, when the user QUITS
+  # it, shows a persistent "Launch Serberus" panel (gated by the managed
+  # `guardianEnabled` key). Installed hidden beside the agent; its LaunchAgent
+  # uses KeepAlive=true so the watchdog itself can't be turned off. No daemon
+  # entitlement and NO sandbox (it shells /bin/launchctl to relaunch the agent).
+  SerberusGuardian:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/SerberusGuardian
+    info:
+      path: Support/Generated/SerberusGuardian-Info.plist
+      properties:
+        CFBundleDisplayName: Serberus Guardian
+        # Version from the project-wide build settings (MARKETING_VERSION
+        # matches the repository's VERSION file; PKG/tests checks it).
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: ""
+        NSHighResolutionCapable: true
+        LSUIElement: true
+    settings:
+      base:
+        PRODUCT_NAME: Serberus Guardian
+        PRODUCT_BUNDLE_IDENTIFIER: com.herojoneslabs.serberus.guardian
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: SerberusUI       # SentinelSigilView for the panel glyph
+      - target: PrivMgrCore      # BundleConfig ids + CFPreferencesSource gate read
+
+  # ---- Command-line tools ----
+  serberusd:
+    type: tool
+    platform: macOS
+    sources: [Sources/serberusd]
+    settings:
+      base:
+        PRODUCT_NAME: serberusd
+        ENABLE_HARDENED_RUNTIME: YES
+        # No CODE_SIGN_ENTITLEMENTS: the Endpoint Security entitlement is
+        # restricted, and a command-line tool cannot embed the provisioning
+        # profile that authorizes it, so AMFI would kill every Xcode-signed
+        # build at launch. The shipped daemon is wrapped and signed with the
+        # distribution entitlements by Support/build-serberusd-bundle.sh; the
+        # PKG builders build this target unsigned and sign it themselves.
+        # Sign with the identifier every script uses and every peer pins
+        # (the PAM module, the clients, pam-lib serberus_daemon_trusted). The
+        # target's bundle id (com.herojoneslabs.serberus.serberusd) would
+        # otherwise become the code-signing identifier and be rejected.
+        OTHER_CODE_SIGN_FLAGS: "$(inherited) --identifier com.herojoneslabs.serberus.daemon"
+        OTHER_LDFLAGS: [-lsqlite3, -lbsm, -lEndpointSecurity]
+    dependencies:
+      - target: SerberusDaemonCore
+      - target: PrivMgrCore
+      - target: SerberusXPCShim
+
+  serberus:
+    type: tool
+    platform: macOS
+    sources: [Sources/SerberusCLI]
+    settings:
+      base:
+        PRODUCT_NAME: serberus
+        ENABLE_HARDENED_RUNTIME: YES
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: SerberusCLICore
+      - target: PrivMgrCore
+
+  # ---- PAM module (flat .so, built with clang via a legacy target) ----
+  # Inputs compiled by Support/build-pam-target.sh (legacy targets have no
+  # compile phase): Sources/pam_serberus/pam_serberus.c, pam_config.c, and
+  # sudo_args.c.
+  pam_serberus:
+    type: tool
+    platform: macOS
+    legacy:
+      toolPath: /bin/bash
+      arguments: "Support/build-pam-target.sh"
+      passSettings: true
+      workingDirectory: "$(SRCROOT)"
+
+  # ---- SecurityAgent authorization plugin ----
+  # A real macOS Loadable Bundle (.bundle with Contents/MacOS +
+  # Contents/Info.plist), unlike pam_serberus's flat .so above, so the
+  # standard `type: bundle` product works directly — no legacy build script.
+  # No entitlements (nothing sets CODE_SIGN_ENTITLEMENTS project-wide).
+  # The production authorization mechanism: per-app identity enforcement for
+  # authURI rights. Links PrivMgrCore so the mechanism parses the delivered
+  # policy with the SAME reader/schema the daemon uses (one implementation,
+  # so the two can never disagree about what a rule says).
+  SerberusAuth:
+    type: bundle
+    platform: macOS
+    sources: [Sources/SerberusAuth]
+    dependencies:
+      - target: PrivMgrCore
+    settings:
+      base:
+        WRAPPER_EXTENSION: bundle
+        PRODUCT_BUNDLE_IDENTIFIER: com.herojoneslabs.serberus.authplugin
+        # A `type: bundle` target does not pull a static-lib dependency into
+        # its link phase the way `type: tool` does, so link it explicitly.
+        OTHER_LDFLAGS: [-lPrivMgrCore]
+        INSTALL_PATH: "$(LOCAL_LIBRARY_DIR)/Security/SecurityAgentPlugins"
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: ""
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+
+  SerberusAuthProbe:
+    type: bundle
+    platform: macOS
+    sources: [extras/SerberusAuthProbe/Sources]
+    settings:
+      base:
+        WRAPPER_EXTENSION: bundle
+        INSTALL_PATH: "$(LOCAL_LIBRARY_DIR)/Security/SecurityAgentPlugins"
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: ""
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+
+  # ---- Test bundles (Swift Testing) ----
+  PrivMgrCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/PrivMgrCoreTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: PrivMgrCore
+
+  SerberusDaemonCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/SerberusDaemonCoreTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        OTHER_LDFLAGS: [-lsqlite3, -lbsm, -lEndpointSecurity]
+    dependencies:
+      - target: SerberusDaemonCore
+      - target: PrivMgrCore
+      - target: SerberusXPCShim
+
+  PolicyBuilderCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/PolicyBuilderCoreTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: PolicyBuilderCore
+      - target: PrivMgrCore
+
+  SerberusSentinelCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/SerberusSentinelCoreTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: SerberusSentinelCore
+      - target: PrivMgrCore
+      - target: SerberusXPCShim
+        link: false
+
+  SerberusCLICoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/SerberusCLICoreTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: SerberusCLICore
+      - target: PrivMgrCore
+
+  SerberusIntelCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/SerberusIntelCoreTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        OTHER_LDFLAGS: [-lsqlite3]
+    dependencies:
+      - target: SerberusIntelCore
+      - target: PrivMgrCore
+
+  # Compiles the PAM module's pure config-parsing C (pam_config.c) directly
+  # into the test bundle so Swift Testing can exercise the break-glass reader
+  # (enforcementMode + pamBypass) against temp plist fixtures — the safety-
+  # critical logic that decides whether sudo is intercepted at all.
+  PAMConfigTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/PAMConfigTests
+      - Sources/pam_serberus/pam_config.c
+      - Sources/pam_serberus/pam_config.h
+      - Sources/pam_serberus/sudo_args.c
+      - Sources/pam_serberus/sudo_args.h
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_OBJC_BRIDGING_HEADER: Tests/PAMConfigTests/PAMConfigTests-Bridging-Header.h
+        HEADER_SEARCH_PATHS: [Sources/pam_serberus, Sources/SerberusXPCShim/include]
+        OTHER_LDFLAGS: [-framework, CoreFoundation]
+
+schemes:
+  SerberusCommander:
+    build:
+      targets:
+        SerberusCommander: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [PrivMgrCoreTests, PolicyBuilderCoreTests]
+
+  SerberusSentinel:
+    build:
+      targets:
+        SerberusSentinel: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [SerberusSentinelCoreTests]
+
+  SerberusSentinelAgent:
+    build:
+      targets:
+        SerberusSentinelAgent: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [SerberusSentinelCoreTests]
+
+  SerberusGuardian:
+    build:
+      targets:
+        SerberusGuardian: all
+    run:
+      config: Debug
+
+  serberusd:
+    build:
+      targets:
+        serberusd: all
+    test:
+      config: Debug
+      targets: [SerberusDaemonCoreTests]
+
+  serberus:
+    build:
+      targets:
+        serberus: all
+    test:
+      config: Debug
+      targets: [SerberusCLICoreTests]
+
+  SerberusAuth:
+    build:
+      targets:
+        SerberusAuth: all
+
+  SerberusAuthProbe:
+    build:
+      targets:
+        SerberusAuthProbe: all
+
+  AllTests:
+    build:
+      targets:
+        PrivMgrCoreTests: [test]
+        SerberusDaemonCoreTests: [test]
+        PolicyBuilderCoreTests: [test]
+        SerberusSentinelCoreTests: [test]
+        SerberusCLICoreTests: [test]
+        SerberusIntelCoreTests: [test]
+        PAMConfigTests: [test]
+    test:
+      config: Debug
+      targets:
+        - PrivMgrCoreTests
+        - SerberusDaemonCoreTests
+        - PolicyBuilderCoreTests
+        - SerberusSentinelCoreTests
+        - SerberusCLICoreTests
+        - SerberusIntelCoreTests
+        - PAMConfigTests

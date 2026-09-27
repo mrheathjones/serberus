@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus SUDO rules — curated standard-user sudo for the Jamf binary.
+  Lets an ENROLLED standard user (config sudoEnrollment.users) run:
+      sudo jamf recon
+      sudo jamf log
+  and nothing else under jamf. Two layers:
+    - the coarse /etc/sudoers.d/serberus drop-in is PATH-ONLY and auto-resolves
+      the /usr/local/bin/jamf symlink to its real target (both paths emitted);
+    - the daemon (pam_serberus) is the FINE gate and enforces argPattern, which
+      is a regex on argv[0] (the subcommand): ^recon$ / ^log$ — so `recon` and
+      `recon -verbose` match but `reconfigure`/`removeFramework` do not.
+  elevation.type=silent: allowed after the user's own password (no GUI prompt);
+  change to "prompt" to require Agent approval. Deploy alongside the existing
+  config profile (enforce + sudoEnrollment.users=[testuser]) — the daemon reads
+  every rules_* key and unions them, so this is additive to the authURI profile.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.rules</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>rules_sudo_jamf</key>
+								<string>{"schemaVersion":"1.0","policyVersion":"1.0.0","profileKey":"rules_sudo_jamf","profilePriority":50,"rules":[{"id":"allow-jamf-recon","type":"sudo","action":"allow","description":"Allow enrolled standard user to run sudo jamf recon","priority":10,"match":{"commandPattern":"/usr/local/bin/jamf","matchType":"exact","argPattern":"^recon$"},"conditions":{"requireJustification":false,"maxGrantDurationSeconds":0},"elevation":{"type":"silent","logArguments":true}},{"id":"allow-jamf-log","type":"sudo","action":"allow","description":"Allow enrolled standard user to run sudo jamf log","priority":20,"match":{"commandPattern":"/usr/local/bin/jamf","matchType":"exact","argPattern":"^log$"},"conditions":{"requireJustification":false,"maxGrantDurationSeconds":0},"elevation":{"type":"silent","logArguments":true}}]}</string>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Rules — rules_sudo_jamf</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.rules.rules_sudo_jamf</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>34390EA6-00EC-4517-8BA3-FCC9EB77D84B</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus sudo rule profile: curated standard-user sudo for jamf recon / jamf log.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — rules_sudo_jamf</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.rules.rules_sudo_jamf</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>705A6D93-3E39-4FC4-86FE-A4A25FEE0810</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

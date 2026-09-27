@@ -1,0 +1,238 @@
+{
+  "title": "Serberus — Daemon Configuration",
+  "description": "Core Serberus daemon behavior and MDM connectivity. Delivered to the com.herojoneslabs.serberus.config preference domain. Only a computer-level profile counts. The daemon applies changes within about 30 seconds, and at once when this domain changes on disk; no restart is needed.",
+  "__preferencedomain": "com.herojoneslabs.serberus.config",
+  "type": "object",
+  "properties": {
+    "daemonEnabled": {
+      "type": "boolean",
+      "title": "Daemon enabled",
+      "description": "Master switch. When false, the daemon runs but enforces nothing. Defaults to true when the key is absent.",
+      "default": true,
+      "property_order": 10
+    },
+    "guardianEnabled": {
+      "type": "boolean",
+      "title": "Enable Guardian prompt",
+      "description": "When true, the invisible Guardian agent shows a persistent upper-right prompt (with a 'Launch Serberus' button) if a user quits the Serberus Sentinel menu-bar app — warning them their elevation requests won't work until it's relaunched. The Guardian is always installed and watching; this key only controls whether it prompts. Absent or false ⇒ it stays silent. Default false.",
+      "default": false,
+      "property_order": 15
+    },
+    "guardianDetectionSeconds": {
+      "type": "integer",
+      "title": "Guardian detection delay (seconds)",
+      "description": "How long the Guardian waits after the Sentinel goes down before showing the prompt. Lower = the prompt fires faster after a quit; too low can briefly flash the prompt during a Sentinel crash-and-relaunch. Clamped 0–300. Absent ⇒ 3.",
+      "default": 3,
+      "minimum": 0,
+      "maximum": 300,
+      "property_order": 16
+    },
+    "enforcementMode": {
+      "type": "string",
+      "title": "Enforcement mode",
+      "description": "'Enforce' applies policy (the only mode with security guarantees). 'Audit' evaluates and logs would-grant/would-deny but passes requests through to native macOS. 'Monitor' only observes and logs. New deployments start in Monitor (the pre-filled value) and move to Enforce once the logs look right. A value serberusd does not recognise is treated as Enforce.",
+      "default": "monitor",
+      "enum": [
+        "enforce",
+        "audit",
+        "monitor"
+      ],
+      "options": {
+        "enum_titles": [
+          "Enforce",
+          "Audit",
+          "Monitor"
+        ]
+      },
+      "property_order": 20
+    },
+    "sudoCacheSeconds": {
+      "type": "integer",
+      "title": "Sudo cache (seconds)",
+      "description": "How long a granted sudo decision is cached before re-evaluation. 0 disables caching. A value outside 0–86400 is rejected: 0 is used and the daemon reports degraded (config_invalid).",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 86400,
+      "property_order": 30
+    },
+    "promptTimeoutSeconds": {
+      "type": "integer",
+      "title": "Prompt timeout (seconds)",
+      "description": "How long an elevation prompt stays up before it auto-denies (never auto-allows). The daemon caps the prompt window at 60 seconds, so values from 61 to 3600 are treated as 60. A value outside 1–3600 is rejected: the default (60) is used and the daemon reports degraded (config_invalid).",
+      "default": 60,
+      "minimum": 1,
+      "maximum": 60,
+      "property_order": 40
+    },
+    "timeBoundGrantsEnabled": {
+      "type": "boolean",
+      "title": "Enable time-bound elevation grants",
+      "description": "Master switch for grant EXPIRY. When ON (the default), an approved elevation gets a grant that expires after the rule's own duration, or the default grant duration below when the rule is set to use the org default; after that it must be re-approved. When OFF, no grant is issued at all: a prompt rule asks every time and a silent rule is a plain allow. Only a time-bound grant lets a prompt rule skip its prompt, and only until it expires. Either way, a rule set to -1, or a rule set to 0 while the default below is also 0, gets no grant and is evaluated every time. This never adds the user to the admins group or grants standing privilege.",
+      "default": true,
+      "property_order": 43
+    },
+    "defaultGrantDurationMinutes": {
+      "type": "integer",
+      "title": "Default grant duration (minutes)",
+      "description": "Org-wide default grant length, in minutes, for a matched allow rule whose grant duration is 0 (use the org default). A rule's own positive duration overrides it, and a rule set to -1 never gets a grant. With 'Enable time-bound elevation grants' OFF it has no effect: no grant is issued. Fixed minutes only; there is no login-session option. The expiry is persisted (and survives daemon restart and reboot), so a grant continues after a mid-task restart until its deadline passes, after which the next attempt is evaluated fresh. This never adds the user to the admins group or grants any standing privilege. 0 (the default) means no org default: a rule left at 0 then gets no grant. A value outside 0–1440 is rejected: 0 is used and the daemon reports degraded (config_invalid).",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 1440,
+      "property_order": 45
+    },
+    "jamfProURL": {
+      "type": "string",
+      "title": "Jamf Pro URL",
+      "description": "HTTPS URL of the Jamf Pro instance (optional; used for MDM-side integration).",
+      "property_order": 50
+    },
+    "jamfAPIClientID": {
+      "type": "string",
+      "title": "Jamf API client ID",
+      "description": "OAuth client ID for the Jamf Pro API (optional).",
+      "property_order": 60
+    },
+    "jamfAPIClientSecret": {
+      "type": "string",
+      "title": "Jamf API client secret",
+      "description": "OAuth client secret for the Jamf Pro API (optional). Note: any local user can read values delivered via configuration profile, so give this client only Read Computers and Update Computers, which apply to every computer record (see SECURITY.md).",
+      "property_order": 70
+    },
+    "commanderPublishEnabled": {
+      "type": "boolean",
+      "title": "Allow Serberus Commander to publish rules directly",
+      "description": "Admin-console gate, read by Serberus Commander on the Macs this profile is scoped to (the daemon ignores it). When true, Commander shows its Publish to Jamf buttons for policies and can create/update rule profiles through the Jamf API. NOTE: rules published that way enforce correctly but do NOT render in the Jamf console (the profile shows blank) — prefer the console-editable Custom Schema (Save Jamf Schema) or Application & Custom Settings → Upload File (.plist) paths, and turn this on only for admins who need one-click publish. Only a managed (profile-delivered) value counts. Defaults to false when the key is absent.",
+      "default": false,
+      "property_order": 75
+    },
+    "pamBypass": {
+      "type": "object",
+      "title": "PAM bypass",
+      "description": "Break-glass for sudo only: these users/groups skip Serberus's sudo evaluation and fall through to native pam_opendirectory. It does not exempt anyone from authorization-right (authURI) rules: an authURI deny still applies to everyone, including these users.",
+      "property_order": 80,
+      "properties": {
+        "groups": {
+          "type": "array",
+          "title": "Bypass groups",
+          "items": {
+            "type": "string",
+            "title": "Group name"
+          },
+          "property_order": 10
+        },
+        "users": {
+          "type": "array",
+          "title": "Bypass users",
+          "items": {
+            "type": "string",
+            "title": "User name"
+          },
+          "property_order": 20
+        }
+      }
+    },
+    "sudoEnrollment": {
+      "type": "object",
+      "title": "Sudo enrollment (standard-user curated sudo)",
+      "description": "Which STANDARD users may run the curated allow/prompt sudo commands. The daemon writes /etc/sudoers.d/serberus for these principals (per-command, never NOPASSWD/ALL). pam_serberus governs AUTHENTICATION; this governs sudoers AUTHORIZATION — a non-admin user needs an entry here to run any curated command at all (admins already can). Distinct from PAM bypass, which is the break-glass escape hatch.",
+      "property_order": 90,
+      "properties": {
+        "users": {
+          "type": "array",
+          "title": "Enrolled users",
+          "description": "Standard-user shortnames to enroll for curated sudo. $USERNAME is a Jamf payload variable substituted with the assigned user's shortname at deploy time; the daemon safely rejects the literal token if substitution doesn't happen.",
+          "items": {
+            "type": "string",
+            "title": "User shortname"
+          },
+          "property_order": 10
+        },
+        "group": {
+          "type": "string",
+          "title": "Enrolled group (optional)",
+          "description": "A single group whose members are enrolled, emitted as a sudoers %group. Resolves LOCAL / Open Directory groups only — NOT raw Entra groups (use the IdP settings below for Entra).",
+          "property_order": 20
+        },
+        "idpSource": {
+          "type": "string",
+          "title": "IdP group source",
+          "description": "Optional: enroll by Entra (Azure AD) group. 'Disabled' (default) leaves IdP enrollment off. 'Jamf Connect state cache' reads the console user's Jamf Connect state and enrolls that VERIFIED console user if they are in one of the IdP groups below (it can only ever enroll the current console user, never a name taken from the file).",
+          "enum": [
+            "disabled",
+            "jamf_connect_state"
+          ],
+          "options": {
+            "enum_titles": [
+              "Disabled",
+              "Jamf Connect state cache"
+            ]
+          },
+          "default": "disabled",
+          "property_order": 30
+        },
+        "idpGroups": {
+          "type": "array",
+          "title": "IdP groups",
+          "description": "Entra group names or GUIDs. The console user is enrolled when their Jamf Connect state lists membership in any of these. Requires idpSource = Jamf Connect state cache.",
+          "items": {
+            "type": "string",
+            "title": "Entra group name or GUID"
+          },
+          "property_order": 40
+        },
+        "idpStatePath": {
+          "type": "string",
+          "title": "IdP state path (advanced)",
+          "description": "Path, relative to the console user's home, to the Jamf Connect state plist. Default: Library/Preferences/com.jamf.connect.state.plist.",
+          "default": "Library/Preferences/com.jamf.connect.state.plist",
+          "property_order": 50
+        },
+        "idpGroupsKey": {
+          "type": "string",
+          "title": "IdP groups key (advanced)",
+          "description": "Key inside the Jamf Connect state plist holding the group list. Default: UserGroups.",
+          "default": "UserGroups",
+          "property_order": 60
+        },
+        "requireRootOwnedState": {
+          "type": "boolean",
+          "title": "Require root-owned IdP state (advanced)",
+          "description": "Require the IdP state file to be root-owned and not writable by its owner. Default true: the Jamf Connect state file is written by the user, so without this a user can add a group claim and enrol themselves in curated sudo. Set false only if you accept that risk; enrolment then trusts the user-owned file.",
+          "default": true,
+          "property_order": 70
+        }
+      }
+    },
+    "sudoDenyMessage": {
+      "type": "string",
+      "title": "Sudo deny message",
+      "description": "Optional message shown at the terminal when a curated sudo command is DENIED by policy (enforce mode only). Use the literal token {command} to insert the FULL command line as invoked, including its arguments (e.g. '/usr/local/jamf/bin/jamf policy'). Leave blank to use the built-in message, which also names the full command line. Does not affect the separate 'policy service unavailable' fail-closed message.",
+      "property_order": 100
+    },
+    "sudoAllowMessage": {
+      "type": "string",
+      "title": "Sudo allow message",
+      "description": "Optional message shown at the terminal when a curated sudo command is ALLOWED by policy (enforce mode only; not shown for break-glass/bypass users). Use the literal token {command} to insert the FULL command line as invoked, including its arguments (e.g. '/usr/local/jamf/bin/jamf recon'). Leave blank for no message.",
+      "property_order": 110
+    },
+    "sudoPromptDeniedMessage": {
+      "type": "string",
+      "title": "Sudo prompt-declined message",
+      "description": "Optional message shown at the terminal when the user DECLINES the Serberus audit prompt for a sudo command (distinct from a policy deny — the policy permitted the attempt; the user cancelled it). Supports the {command} token. Leave blank for the built-in: \"you declined the request for '{command}' — nothing was changed\".",
+      "property_order": 120
+    },
+    "sudoPromptTimeoutMessage": {
+      "type": "string",
+      "title": "Sudo prompt-timeout message",
+      "description": "Optional message shown at the terminal when the Serberus audit prompt for a sudo command EXPIRES unanswered (auto-deny). Supports the {command} token. Leave blank for the built-in: \"the approval request for '{command}' timed out — denied\".",
+      "property_order": 130
+    },
+    "enableBiometrics": {
+      "type": "boolean",
+      "title": "Use Touch ID for per-app authorization rules (removes the admin fallback)",
+      "description": "No effect in Serberus 0.9.0: per-app (App Identity) rules are disabled, so there is no per-app branch for this setting to change. RISK — read before enabling. ON removes the admin fallback for App Identity rules: only the SESSION OWNER (the person logged in) can approve, so a nearby admin can no longer authenticate on a standard user's behalf, and anyone enrolled in Touch ID on that Mac can approve with a fingerprint alone. On shared or kiosk Macs, where the console account may not be the intended approver, that path is lost entirely. WHY IT EXISTS: macOS offers Touch ID only when the current user alone can satisfy a rule — a rule that also admits admins always shows the name-and-password form instead, because biometrics cannot stand in for a different person. OFF (the default) is session-owner-OR-admin, the broader principal set. SCOPE: affects ONLY the per-app branch of a composed authorization right. The right's preserved native branch is unchanged either way, so any caller that matches no pinned app still gets the right's native rule.",
+      "default": false,
+      "property_order": 80
+    }
+  }
+}

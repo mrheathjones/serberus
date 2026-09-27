@@ -1,0 +1,1030 @@
+#! /bin/bash
+
+######################################################################
+############## Begin Script Information Block ########################
+######################################################################
+# Name: postinstall
+# Author: Heath Jones
+# Date: 2026-06-13
+# Modified: 2026-09-26
+# Purpose: Serberus PKG postinstall — check the PAM module's directory chain
+#          (before touching the module), run the 10-criterion upgrade
+#          validation, write version.plist, bootstrap the LaunchDaemon, wait
+#          until it is actually UP (one pid for 8 s with no launchd restart, a
+#          state.plist written by THIS daemon, healthy `serberus status`),
+#          re-check the pid, then line-merge sudo_local. The break-glass preflight
+#          runs in the PREINSTALL, before the upgrade teardown.
+#          Every failure — including an unexpected `set -e` exit, via the
+#          EXIT trap — takes the same abort path: remove the sudoers drop-in,
+#          unwire sudo_local (if either survives, the daemon is kept enabled
+#          and running and the script exits 1 loudly), then disable the
+#          daemon, boot it out and wait until launchd has dropped it, re-check
+#          the drop-in, demote JIT admins, restore the AuthorizationDB (never
+#          by executing a daemon that failed signature validation, and never
+#          beside a daemon that is still loaded), and write state=degraded
+#          with the real reason. Installer output, this script's included,
+#          is in /var/log/install.log.
+# Version: 1.8 - (a) The serberus CLI's folder chain (/usr/local/bin,
+#          /usr/local, /usr) is checked up front: when it is not root-only the
+#          install aborts with that reason (it used to abort later as "never
+#          came up"), and the payload CLI is removed from the user-writable
+#          folder. (b) The abort path waits the daemon's ExitTimeOut plus 5 s
+#          after the bootout. (c) The first log line says where the installer
+#          log is. (d) The header states the abort order the script follows.
+#          (e) version.plist records execGate (enabled | disabled) from the
+#          EXEC_GATE file build-pkg.sh stages; an ESF=off build is disabled.
+#          1.7 - (a) The component versions come from the VERSION file
+#          build-pkg.sh stages beside this script (the repository's single
+#          version source). (b) version.plist records installTeamID, the
+#          Team ID the daemon was validated against; teardowns pin the daemon
+#          to it. (c) A stray /usr/local/lib/pam/pam_serberus.so.2 (OpenPAM
+#          loads it in place of pam_serberus.so) is removed before sudo_local
+#          is wired; one that cannot be removed aborts the install. (d) The
+#          abort path disables the daemon after sudo_local is unwired, just
+#          before the bootout, so an interrupted abort never leaves a wired
+#          sudo_local behind a disabled daemon. (e) After the bootout the abort
+#          path waits (up to the 20 s ExitTimeOut) for launchd to drop the
+#          job; if it is still loaded the one-shots are skipped and the manual
+#          steps logged.
+#          1.6 - (a) "Up" is stricter: the bootstrap time is recorded first
+#          and the daemon must write a state.plist (not `unknown`) no older
+#          than it; one pid must hold for 8 s (past the 5 s ThrottleInterval)
+#          with launchd's `runs` unchanged and no failed exit recorded; the
+#          pid is re-read right before sudo_local is merged. (b) Criterion
+#          10: the serberus CLI is present, mode 755, root-owned and signed
+#          by the daemon's team; a missing CLI fails the health check. (c)
+#          The daemon is trusted for execution only through
+#          serberus_daemon_trusted (strict signature, Apple anchor, identifier
+#          com.herojoneslabs.serberus.daemon, its team). (d) A sudoers
+#          drop-in that survives its removal stops the abort path BEFORE
+#          sudo_local is unwired, with the daemon kept running. (e) A chown
+#          failure on sudo_local is no longer hidden by the chmod after it.
+#          (f) --demote-jit exit 3 (no grant store) is informational.
+#          (g) Version 0.9.0.
+#          1.5 - (a) EXIT trap right after pam-lib.sh is sourced: any
+#          unexpected exit before the success marker runs abort_install.
+#          (b) The abort keeps the daemon enabled and running (and exits 1
+#          loudly) when an active pam_serberus line survives the unwire. (c)
+#          "Up" = the same pid for ~3 s AND a healthy `serberus status`
+#          (pam-lib serberus_launchd_wait_running). (d) umask 022. (e) The
+#          module's directory chain is checked BEFORE any chown/chmod, and the
+#          module is locked with chown -h / chmod -h (symlinks refused). (f)
+#          A daemon that failed signature validation is never executed for
+#          --demote-jit / --restore-authdb; manual instructions are printed
+#          instead. One-shots are bounded (120 s; a timeout is a loud
+#          failure). (g) state.plist records the real degraded reason
+#          (pam_not_wired / auth_plugin_unavailable), not a fixed
+#          config_invalid. (h) The break-glass preflight moved to the
+#          preinstall (it ran here only after the upgrade teardown). (i) Warns
+#          loudly when /etc/pam.d/sudo does not include sudo_local as its
+#          first auth line (never edits it). (j) Locks down the installed
+#          uninstall.sh + pam-lib.sh under the support dir.
+#          1.4 - (a) Refuses a target volume other than "/" ($3). (b) Tools
+#          by absolute path (no `which` under root). (c) The PAM module and
+#          the SerberusAuth plugin must be signed by the SAME team as the
+#          installed daemon (codesign -R), and the daemon must carry a Team
+#          ID at all. (d) The module's directory chain (/usr … the module)
+#          must be root-owned and not group/other-writable before
+#          sudo_local is wired. (e) "Daemon up" now means a running pid
+#          within ~10 s of bootstrap, not merely a loaded job (an AMFI kill
+#          loop stays loaded). (f) `launchctl enable` before bootstrap so a
+#          label disabled by an earlier uninstall/abort cannot block the
+#          install. (g) Every abort path disables + boots out the daemon,
+#          removes the sudoers drop-in, unwires sudo_local, demotes JIT
+#          admins and restores the AuthorizationDB, so a reboot can never
+#          resurrect an ungated daemon. (h) Ships and validates the
+#          SerberusAuth authorization plugin.
+#          1.3 - (a) PATH no longer includes /usr/local/bin: a user who owns
+#          it could otherwise plant tools this root script runs. (b) The
+#          PAM module arch check uses file(1), not lipo, which exists only
+#          with the Command Line Tools and made the check fail on endpoints.
+#          (c) The abort path removes the coarse sudoers drop-in before
+#          unwiring sudo_local, so a failed install never leaves the
+#          path-only drop-in without the PAM gate behind it.
+#          1.2 - (a) PAM module relocated to /usr/local/lib/pam/
+#          pam_serberus.so — /usr/lib/pam sits on the SEALED read-only APFS
+#          system snapshot (macOS 11+) and can never hold a third-party
+#          module; sudo_local references it by ABSOLUTE path via pam-lib.sh.
+#          (b) Every abort path now UNWIRES a sudo_local left wired by a
+#          previous install (marker-aware) — the preinstall has already
+#          booted the daemon out and the old binary may already be replaced,
+#          so exiting with a wired sudo_local and no daemon would hard-deny
+#          every sudo. (c) Upgrade validation gains a native-arch criterion
+#          (lipo) mirroring the test pkg. (d) Break-glass preflight now
+#          requires a RESOLVABLE pamBypass user/group (typo'd entries provide
+#          zero bypass).
+#          1.1 - create_sudo_local_if_absent replaced with the shared
+#          pam-lib.sh line-merge (idempotent; Serberus line inserted ABOVE any
+#          pre-existing `auth sufficient pam_tid.so` so Touch ID cannot bypass
+#          Serberus; user lines never clobbered; from-scratch content comes
+#          from the staged Support/sudo_local — single source of truth). Adds
+#          the break-glass preflight: ABORTS before wiring sudo_local when the
+#          effective com.herojoneslabs.serberus.config is enforce-or-absent
+#          with an empty pamBypass — pam_serberus fails closed and would brick
+#          sudo for everyone. Fails closed against installation only; never
+#          modifies sudo config on failure.
+#          1.0 - Initial Script
+#
+######################################################################
+############## End Script Information Block ##########################
+######################################################################
+
+####################################################################
+############## Begin Define Variables Block ########################
+####################################################################
+##############################
+### Core Defined Variables ###
+### MODIFY AT YOUR OWN RISK ##
+##############################
+
+set -euo pipefail
+umask 022
+
+# System directories only: /usr/local/bin can be user-writable.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Absolute tool paths: this runs as root, so nothing is resolved via PATH.
+readonly BASENAME="/usr/bin/basename"
+readonly CAT="/bin/cat"
+readonly CHMOD="/bin/chmod"
+readonly CHOWN="/usr/sbin/chown"
+readonly CODESIGN="/usr/bin/codesign"
+readonly DATE="/bin/date"
+readonly DIRNAME="/usr/bin/dirname"
+readonly FILE="/usr/bin/file"
+readonly ID="/usr/bin/id"
+readonly KILLALL="/usr/bin/killall"
+readonly LAUNCHCTL="/bin/launchctl"
+readonly LOGGER="/usr/bin/logger"
+readonly MKDIR="/bin/mkdir"
+readonly PLUTIL="/usr/bin/plutil"
+readonly RM="/bin/rm"
+readonly STAT="/usr/bin/stat"
+readonly UNAME="/usr/bin/uname"
+readonly PLIST_BUDDY="/usr/libexec/PlistBuddy"
+
+readonly ORG_PLIST_DOMAIN="com.herojoneslabs.serberus"
+readonly SCRIPT_NAME=$("${BASENAME}" "$0")
+readonly SCRIPT_DIR=$(cd "$("${DIRNAME}" "$0")" && pwd)
+readonly SCRIPT_VERSION="1.8"
+readonly LOG_LABEL="${ORG_PLIST_DOMAIN}.postinstall"
+readonly TIMESTAMP=$("${DATE}" -u +%Y-%m-%dT%H:%M:%SZ)
+
+##################################
+### End Core Defined Variables ###
+##################################
+
+########################################
+######## User Defined Variables ########
+### Place your script variables here ###
+########################################
+
+readonly DAEMON_LABEL="com.herojoneslabs.serberus.daemon"
+# The daemon ships as an app-like bundle so it can carry the provisioning profile
+# that authorizes the Endpoint Security entitlement (see docs/esf-provisioning-and-notarization.md).
+readonly DAEMON_BUNDLE="/Library/PrivilegedHelperTools/serberusd.app"
+readonly DAEMON_BINARY="${DAEMON_BUNDLE}/Contents/MacOS/com.herojoneslabs.serberus.daemon"
+# The authorization plugin identity-scoped authURI rules compose into rights
+# ("SerberusAuth:identity"). Frozen name: deployed rights reference it.
+readonly AUTH_PLUGIN="/Library/Security/SecurityAgentPlugins/SerberusAuth.bundle"
+# The serberus CLI (payload). `serberus status` is part of the "daemon up" check.
+readonly CLI_BINARY="/usr/local/bin/serberus"
+# Seconds to wait after bootstrap for the daemon to have a running pid (the
+# 8 s same-pid stability window, pam-lib SERBERUS_LAUNCHD_STABLE_SECONDS, is
+# added on top).
+readonly DAEMON_START_TIMEOUT=10
+# Hard deadline for each daemon one-shot (--demote-jit, --restore-authdb).
+readonly ONESHOT_TIMEOUT=120
+# /usr/lib/pam is on the SEALED read-only system snapshot (macOS 11+); the
+# module lives under the /usr/local firmlink and sudo_local references it by
+# absolute path (pam-lib.sh SERBERUS_PAM_MODULE_PATH — keep in sync).
+readonly PAM_MODULE_DIR="/usr/local/lib/pam"
+readonly PAM_MODULE="${PAM_MODULE_DIR}/pam_serberus.so"
+readonly LAUNCHD_PLIST="/Library/LaunchDaemons/com.herojoneslabs.serberus.daemon.plist"
+readonly SUDO_LOCAL="/etc/pam.d/sudo_local"
+readonly PAM_SUDO="/etc/pam.d/sudo"
+readonly SUPPORT_DIR="/Library/Application Support/Serberus"
+readonly STATE_PLIST="${SUPPORT_DIR}/state.plist"
+readonly VERSION_PLIST="${SUPPORT_DIR}/version.plist"
+readonly AUTHDB_BACKUPS="${SUPPORT_DIR}/authdb-backups"
+# Installed by the payload so an admin can tear Serberus down later.
+readonly INSTALLED_UNINSTALL="${SUPPORT_DIR}/uninstall.sh"
+readonly INSTALLED_PAM_LIB="${SUPPORT_DIR}/pam-lib.sh"
+# The product version: build-pkg.sh stages the repository's VERSION file
+# beside this script. It is informational (version.plist), so a missing or
+# malformed file is recorded as "unknown" rather than failing the install.
+readonly VERSION_FILE="${SCRIPT_DIR}/VERSION"
+PRODUCT_VERSION=""
+if [[ -f "${VERSION_FILE}" && ! -L "${VERSION_FILE}" ]]
+then
+    IFS= read -r PRODUCT_VERSION < "${VERSION_FILE}" || true
+fi
+if [[ ! "${PRODUCT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+then
+    PRODUCT_VERSION="unknown"
+fi
+readonly PRODUCT_VERSION
+# Whether this build has the Endpoint Security exec gate: build-pkg.sh stages
+# EXEC_GATE (enabled | disabled; disabled for an ESF=off build). Recorded in
+# version.plist as execGate; "unknown" when missing or malformed.
+readonly EXEC_GATE_FILE="${SCRIPT_DIR}/EXEC_GATE"
+EXEC_GATE=""
+if [[ -f "${EXEC_GATE_FILE}" && ! -L "${EXEC_GATE_FILE}" ]]
+then
+    IFS= read -r EXEC_GATE < "${EXEC_GATE_FILE}" || true
+fi
+if [[ "${EXEC_GATE}" != "enabled" && "${EXEC_GATE}" != "disabled" ]]
+then
+    EXEC_GATE="unknown"
+fi
+readonly EXEC_GATE
+readonly DAEMON_VERSION="${PRODUCT_VERSION}"
+readonly PAM_VERSION="${PRODUCT_VERSION}"
+readonly CLI_VERSION="${PRODUCT_VERSION}"
+
+# Installer passes the target volume as $3. Serberus gates THIS system's sudo
+# and AuthorizationDB, so it only installs onto the running system.
+readonly TARGET_VOLUME="${3:-}"
+
+# Staged next to this script by build-pkg.sh stage_scripts(): the shared
+# sudo_local merge/preflight logic and the canonical from-scratch content.
+readonly PAM_LIB_PATH="${SCRIPT_DIR}/pam-lib.sh"
+readonly SUDO_LOCAL_TEMPLATE="${SCRIPT_DIR}/sudo_local"
+
+# Success marker: set right before the final exit 0. The EXIT trap runs the
+# abort path whenever the script ends without it.
+INSTALL_SUCCEEDED=0
+# Set while abort_install runs, so the EXIT trap never re-enters it.
+ABORT_IN_PROGRESS=0
+# Daemon trust, from assess_daemon_trust (read-only). Until it has run — and
+# whenever the daemon fails signature validation — the abort path does NOT
+# execute the daemon binary.
+DAEMON_TRUSTED=0
+DAEMON_TEAM=""
+# Set to 0 when the booted-out daemon is still loaded after its ExitTimeOut;
+# the abort path then skips the one-shots and logs the manual steps.
+DAEMON_GONE=1
+# Epoch seconds taken right before `launchctl bootstrap`; only a state.plist
+# the new daemon wrote after it counts.
+BOOTSTRAP_MARK=""
+# Degraded reason upgrade_validation_passes reports (pam_not_wired unless
+# only the authorization plugin failed).
+VALIDATION_REASON="pam_not_wired"
+
+##################################
+### End User Defined Variables ###
+##################################
+####################################################################
+############## End Define Variables Block ##########################
+####################################################################
+
+###################################################################################
+############## Begin Function Block ###############################################
+###################################################################################
+##############################
+### Core Defined Functions ###
+### MODIFY AT YOUR OWN RISK ##
+##############################
+
+log_info() {
+    "${LOGGER}" -t "${LOG_LABEL}" -p user.info "[INFO] $*"
+}
+
+log_warn() {
+    "${LOGGER}" -t "${LOG_LABEL}" -p user.warning "[WARN] $*"
+}
+
+log_error() {
+    "${LOGGER}" -t "${LOG_LABEL}" -p user.err "[ERROR] $*"
+}
+
+require_root() {
+    if [[ "$("${ID}" -u)" -ne 0 ]]
+    then
+        log_error "Must run as root"
+        exit 1
+    fi
+}
+
+# Serberus rewires THIS Mac's sudo and AuthorizationDB, so installing onto
+# another volume would either do nothing useful or touch the wrong system.
+require_boot_volume() {
+    if [[ "${TARGET_VOLUME}" != "/" ]]
+    then
+        log_error "Target volume is '${TARGET_VOLUME}', not '/'. Serberus must be installed on the running system."
+        exit 1
+    fi
+}
+
+##################################
+### End Core Defined Functions ###
+##################################
+
+########################################
+######## User Defined Functions ########
+### Place your script functions here ###
+########################################
+
+file_mode() {
+    "${STAT}" -f '%Lp' "$1" 2>/dev/null || printf 'missing'
+}
+
+# The arch sudo demands on this Mac (sudo runs arm64e on Apple silicon; a
+# plain arm64 module slice satisfies it).
+native_module_arch() {
+    local machine
+    machine=$("${UNAME}" -m)
+    case "${machine}" in
+        arm64|arm64e)
+            printf 'arm64'
+            ;;
+        *)
+            printf '%s' "${machine}"
+            ;;
+    esac
+}
+
+# The sudo_local merge, module checks and teardown helpers are shared with
+# the test pkgs and unit-tested by PKG/tests/test-pam-lib.sh.
+source_pam_lib() {
+    if [[ ! -f "${PAM_LIB_PATH}" ]]
+    then
+        log_error "pam-lib.sh missing from pkg scripts — NOT wiring sudo_local (fail closed)."
+        exit 1
+    fi
+    # shellcheck source=/dev/null
+    source "${PAM_LIB_PATH}"
+}
+
+# Any exit without the success marker — a failed ensure_directories,
+# write_version_plist or any other `set -e` casualty — takes the abort path.
+on_exit() {
+    local status=$?
+    if [[ "${INSTALL_SUCCEEDED}" -eq 1 || "${ABORT_IN_PROGRESS}" -eq 1 ]]
+    then
+        return 0
+    fi
+    abort_install "pam_not_wired" "unexpected exit (status ${status}) before the install completed"
+}
+
+# Read-only: does the installed daemon pass serberus_daemon_trusted (strict
+# signature — verifying the bundle also validates the sealed
+# embedded.provisionprofile — Apple anchor, identifier
+# com.herojoneslabs.serberus.daemon, and its own Team ID)? Only then may the
+# abort path EXECUTE it (--demote-jit/--restore-authdb).
+assess_daemon_trust() {
+    if [[ -f "${DAEMON_BINARY}" ]] \
+        && DAEMON_TEAM=$(serberus_codesign_team_id "${DAEMON_BUNDLE}") \
+        && serberus_daemon_trusted "${DAEMON_BUNDLE}" "${DAEMON_TEAM}" \
+            2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    then
+        DAEMON_TRUSTED=1
+    else
+        DAEMON_TEAM=""
+        DAEMON_TRUSTED=0
+    fi
+}
+
+# Upgrade validation — all ten criteria must pass before bootstrap.
+upgrade_validation_passes() {
+    local ok=0
+    local core_failed=0
+
+    # 1. New daemon binary present with mode 755.
+    if [[ ! -f "${DAEMON_BINARY}" ]] || [[ "$(file_mode "${DAEMON_BINARY}")" != "755" ]]
+    then
+        log_error "criterion 1 FAIL: daemon binary missing or not mode 755"
+        ok=1
+        core_failed=1
+    fi
+
+    # 2. Daemon bundle passes code-signature verification (verifying the bundle
+    #    also validates the sealed embedded.provisionprofile) AND carries a
+    #    Team ID (assess_daemon_trust). The Team ID anchors criteria 4 and 9:
+    #    an ad-hoc or unsigned daemon has no team to compare against, which
+    #    production refuses — and the abort path will not execute it.
+    if [[ "${DAEMON_TRUSTED}" -ne 1 ]]
+    then
+        log_error "criterion 2 FAIL: daemon signature invalid, or ad-hoc with no Team ID — production requires a Developer ID signature"
+        ok=1
+        core_failed=1
+    fi
+
+    # 3. PAM module present with mode 444.
+    if [[ ! -f "${PAM_MODULE}" ]] || [[ "$(file_mode "${PAM_MODULE}")" != "444" ]]
+    then
+        log_error "criterion 3 FAIL: PAM module missing or not mode 444"
+        ok=1
+        core_failed=1
+    fi
+
+    # 4. PAM module signed by the SAME team as the daemon. `--verify --strict`
+    #    alone accepts any valid signature — including one an attacker made —
+    #    and sudo loads this module as root.
+    if [[ -z "${DAEMON_TEAM}" ]]
+    then
+        log_error "criterion 4 FAIL: no daemon Team ID to verify the PAM module against"
+        ok=1
+        core_failed=1
+    elif ! serberus_codesign_satisfies_team "${PAM_MODULE}" "${DAEMON_TEAM}"
+    then
+        log_error "criterion 4 FAIL: PAM module is not validly signed by team ${DAEMON_TEAM}"
+        ok=1
+        core_failed=1
+    fi
+
+    # 5. LaunchDaemon plist present and parses.
+    if [[ ! -f "${LAUNCHD_PLIST}" ]] || ! "${PLUTIL}" -lint "${LAUNCHD_PLIST}" >/dev/null 2>&1
+    then
+        log_error "criterion 5 FAIL: LaunchDaemon plist missing or unparseable"
+        ok=1
+        core_failed=1
+    fi
+
+    # 6. Plist contains KeepAlive and ThrottleInterval.
+    if ! "${PLIST_BUDDY}" -c "Print :KeepAlive" "${LAUNCHD_PLIST}" >/dev/null 2>&1 \
+        || ! "${PLIST_BUDDY}" -c "Print :ThrottleInterval" "${LAUNCHD_PLIST}" >/dev/null 2>&1
+    then
+        log_error "criterion 6 FAIL: plist missing KeepAlive/ThrottleInterval"
+        ok=1
+        core_failed=1
+    fi
+
+    # 7. AuthorizationDB backups (if any) are valid JSON.
+    if [[ -d "${AUTHDB_BACKUPS}" ]]
+    then
+        local backup
+        for backup in "${AUTHDB_BACKUPS}"/*.json
+        do
+            if [[ -f "${backup}" ]] && ! "${PLUTIL}" -lint "${backup}" >/dev/null 2>&1
+            then
+                log_error "criterion 7 FAIL: authdb backup ${backup} invalid"
+                ok=1
+                core_failed=1
+            fi
+        done
+    fi
+
+    # 8. The PAM module carries the arch sudo will demand on this Mac.
+    #    codesign --verify passes regardless of arch, so this is the only
+    #    check that catches a thin module on the wrong architecture — a
+    #    dlopen failure inside the `requisite` line bricks sudo for everyone.
+    #    Checked with file(1), which is base macOS. lipo ships only with the
+    #    Command Line Tools; on a managed endpoint /usr/bin/lipo is a shim that
+    #    fails, which would abort every install here.
+    local needed
+    needed=$(native_module_arch)
+    local file_desc
+    if ! file_desc=$("${FILE}" -b "${PAM_MODULE}" 2>/dev/null) || [[ -z "${file_desc}" ]]
+    then
+        log_error "criterion 8 FAIL: file(1) cannot read ${PAM_MODULE}"
+        ok=1
+        core_failed=1
+    elif [[ "${file_desc}" != *"${needed}"* ]]
+    then
+        log_error "criterion 8 FAIL: module [${file_desc}] does not cover native ${needed}"
+        ok=1
+        core_failed=1
+    fi
+
+    # 9. SerberusAuth authorization plugin present and signed by the daemon's
+    #    team. SecurityAgent loads it into every authorization that an
+    #    identity-scoped rule composes, so it gets the same team pin.
+    if [[ ! -d "${AUTH_PLUGIN}" ]] || [[ -L "${AUTH_PLUGIN}" ]]
+    then
+        log_error "criterion 9 FAIL: authorization plugin ${AUTH_PLUGIN} missing (or a symlink)"
+        ok=1
+    elif [[ -z "${DAEMON_TEAM}" ]] \
+        || ! serberus_codesign_satisfies_team "${AUTH_PLUGIN}" "${DAEMON_TEAM}"
+    then
+        log_error "criterion 9 FAIL: authorization plugin is not validly signed by the daemon's team"
+        ok=1
+    fi
+
+    # 10. The serberus CLI: present, a regular file (no symlink), root-owned,
+    #     mode 755 and signed by the daemon's team. The payload always ships
+    #     it, and root runs `serberus status` as part of the "daemon up" check.
+    if [[ -L "${CLI_BINARY}" || ! -f "${CLI_BINARY}" ]] \
+        || [[ "$(file_mode "${CLI_BINARY}")" != "755" ]] \
+        || [[ "$("${STAT}" -f '%u' "${CLI_BINARY}" 2>/dev/null)" != "0" ]]
+    then
+        log_error "criterion 10 FAIL: ${CLI_BINARY} missing, a symlink, not root-owned or not mode 755"
+        ok=1
+        core_failed=1
+    elif [[ -z "${DAEMON_TEAM}" ]] \
+        || ! serberus_codesign_satisfies_team "${CLI_BINARY}" "${DAEMON_TEAM}"
+    then
+        log_error "criterion 10 FAIL: ${CLI_BINARY} is not validly signed by the daemon's team"
+        ok=1
+        core_failed=1
+    fi
+
+    # Only the plugin failed => the daemon reports auth_plugin_unavailable;
+    # anything else means sudo is left unwired => pam_not_wired.
+    if [[ "${ok}" -ne 0 && "${core_failed}" -eq 0 ]]
+    then
+        VALIDATION_REASON="auth_plugin_unavailable"
+    else
+        VALIDATION_REASON="pam_not_wired"
+    fi
+
+    return ${ok}
+}
+
+ensure_directories() {
+    "${MKDIR}" -p "${SUPPORT_DIR}"
+    "${MKDIR}" -p "${AUTHDB_BACKUPS}"
+    "${MKDIR}" -p "/Library/Logs/Serberus"
+    "${CHOWN}" root:wheel "${SUPPORT_DIR}"
+    "${CHMOD}" 755 "${SUPPORT_DIR}"
+    "${CHMOD}" 700 "${AUTHDB_BACKUPS}"
+
+    # The installed teardown tools: root runs them, so root:wheel and not
+    # group/other-writable, never through a symlink.
+    local tool
+    for tool in "${INSTALLED_UNINSTALL}" "${INSTALLED_PAM_LIB}"
+    do
+        if [[ -f "${tool}" && ! -L "${tool}" ]]
+        then
+            "${CHOWN}" -h root:wheel "${tool}"
+        fi
+    done
+    if [[ -f "${INSTALLED_UNINSTALL}" && ! -L "${INSTALLED_UNINSTALL}" ]]
+    then
+        "${CHMOD}" -h 755 "${INSTALLED_UNINSTALL}"
+    fi
+    if [[ -f "${INSTALLED_PAM_LIB}" && ! -L "${INSTALLED_PAM_LIB}" ]]
+    then
+        "${CHMOD}" -h 644 "${INSTALLED_PAM_LIB}"
+    fi
+
+    if [[ -d "${AUTH_PLUGIN}" && ! -L "${AUTH_PLUGIN}" ]]
+    then
+        # -R without -H/-L never follows symlinks inside the bundle.
+        "${CHOWN}" -R root:wheel "${AUTH_PLUGIN}"
+        "${CHMOD}" -R go-w "${AUTH_PLUGIN}"
+    fi
+}
+
+write_state_degraded() {
+    local reason="$1"
+    "${CAT}" > "${STATE_PLIST}" <<STATE_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>state</key><string>degraded</string>
+    <key>degradedReason</key><string>${reason}</string>
+    <key>enforcementMode</key><string>enforce</string>
+    <key>updatedAt</key><string>${TIMESTAMP}</string>
+    <key>daemonVersion</key><string>${DAEMON_VERSION}</string>
+</dict>
+</plist>
+STATE_EOF
+    "${CHMOD}" 644 "${STATE_PLIST}"
+}
+
+write_version_plist() {
+    "${CAT}" > "${VERSION_PLIST}" <<VERSION_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>daemonVersion</key><string>${DAEMON_VERSION}</string>
+    <key>pamModuleVersion</key><string>${PAM_VERSION}</string>
+    <key>cliVersion</key><string>${CLI_VERSION}</string>
+    <key>installedAt</key><string>${TIMESTAMP}</string>
+    <key>installedBy</key><string>PKG postinstall</string>
+    <key>execGate</key><string>${EXEC_GATE}</string>
+</dict>
+</plist>
+VERSION_EOF
+    if [[ "${EXEC_GATE}" == "disabled" ]]
+    then
+        log_warn "This package was built without Endpoint Security: the exec gate is DISABLED (execGate=disabled in ${VERSION_PLIST})."
+    fi
+    # The team the daemon was validated against (upgrade_validation_passes
+    # requires it). Teardowns pin the daemon to it before executing it.
+    if [[ "${DAEMON_TEAM}" =~ ^[A-Z0-9]{10}$ ]]
+    then
+        "${PLUTIL}" -replace "${SERBERUS_INSTALL_TEAM_KEY}" -string "${DAEMON_TEAM}" "${VERSION_PLIST}"
+    fi
+    "${CHOWN}" root:wheel "${VERSION_PLIST}"
+    "${CHMOD}" 644 "${VERSION_PLIST}"
+}
+
+# OpenPAM loads "<module>.2" in preference to the module itself, so a stray
+# pam_serberus.so.2 (from another tool or an old build) is what sudo would
+# run. Runs after the directory chain has been checked. Returns 1 when one
+# could not be removed.
+remove_versioned_module() {
+    local result
+    result=$(serberus_pam_remove_versioned_module) || result="FAILED"
+    if [[ "${result}" != "absent" ]]
+    then
+        log_info "stray ${SERBERUS_PAM_MODULE_VERSIONED_PATH}: ${result}"
+    fi
+    [[ "${result}" != "FAILED" ]]
+}
+
+# Refuse to wire sudo_local unless sudo would load the module from a chain
+# only root can change (/usr, /usr/local, /usr/local/lib, /usr/local/lib/pam,
+# the module). The DIRECTORIES are checked first — before root chowns or
+# chmods anything inside them — then the module is locked (-h, no symlinks)
+# and the whole chain re-checked. Reasons from pam-lib.sh go to the log.
+module_path_is_safe() {
+    if ! serberus_pam_module_dir_is_safe "${PAM_MODULE}" \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    then
+        log_error "PAM module directory chain is not root-only — NOT touching the module or sudo_local."
+        log_error "A non-root owner (an Intel Homebrew layout owns /usr/local/lib) could swap the"
+        log_error "module sudo loads as root. Make every directory from /usr down to ${PAM_MODULE_DIR}"
+        log_error "root-owned and not group/other-writable, then reinstall."
+        return 1
+    fi
+    if ! serberus_pam_lock_module "${PAM_MODULE}" \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    then
+        log_error "Could not lock ${PAM_MODULE} to root:wheel 0444 — NOT wiring sudo_local."
+        return 1
+    fi
+    if ! serberus_pam_module_path_is_safe "${PAM_MODULE}" \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    then
+        log_error "PAM module or its directory chain is not root-only — NOT wiring sudo_local."
+        return 1
+    fi
+}
+
+# Apple's /etc/pam.d/sudo must include sudo_local as its FIRST auth line, or
+# the daemon reports degraded(pam_not_wired). Serberus never edits Apple's
+# file, so this only warns — loudly.
+# True when every folder above the CLI is root-only (pam-lib.sh
+# serberus_cli_dir_is_root_only). When it is not, the payload CLI is removed:
+# it sits in a folder a user can change, and admins would run it with sudo.
+cli_dir_is_root_only() {
+    if serberus_cli_dir_is_root_only "${CLI_BINARY}" 2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    then
+        return 0
+    fi
+    if [[ -f "${CLI_BINARY}" || -L "${CLI_BINARY}" ]]
+    then
+        log_warn "Removing ${CLI_BINARY}: its folder is not root-only"
+        "${RM}" -f "${CLI_BINARY}" 2>/dev/null || log_warn "could not remove ${CLI_BINARY}"
+    fi
+    return 1
+}
+
+check_pam_sudo_includes_sudo_local() {
+    if ! serberus_pam_sudo_includes_sudo_local "${PAM_SUDO}" \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+    then
+        log_error "!!! ${PAM_SUDO} does not start its auth stack with 'auth include sudo_local'."
+        log_error "!!! pam_serberus will not gate sudo and the daemon will report degraded(pam_not_wired)."
+        log_error "!!! Restore Apple's ${PAM_SUDO} (it is not modified by Serberus)."
+    fi
+}
+
+# OpenPAM reads sudo's policy from an MDM-managed pam.d or a pam.conf in
+# place of /etc/pam.d when one exists (pam-lib.sh
+# SERBERUS_PAM_SHADOWING_POLICY_PATHS, the daemon's list). Wiring sudo_local
+# then gates nothing, and the daemon reports degraded(pam_not_wired), so the
+# install stops instead. Returns 1 when one exists.
+shadowing_pam_policy_absent() {
+    local found
+    if ! found=$(serberus_pam_shadowing_policy_present)
+    then
+        return 0
+    fi
+    local path
+    while IFS= read -r path
+    do
+        log_error "!!! ${path} exists: OpenPAM loads sudo's policy from it instead of ${PAM_SUDO} / ${SUDO_LOCAL}."
+    done <<< "${found}"
+    log_error "!!! pam_serberus would never be consulted. Remove that file (or the profile that installs it), then reinstall."
+    return 1
+}
+
+# ---- Teardown steps shared by every abort path (same ORDER as uninstall) ----
+
+# Disabled only AFTER sudo_local is unwired, right before the bootout: a
+# reboot must not relaunch a daemon whose sudo gate is gone, but an abort
+# interrupted between a disable and the unwire would leave sudo_local wired
+# to a daemon launchd never starts. A daemon relaunched after the unwire
+# cannot re-provision its drop-in. A later install re-enables the label.
+disable_daemon() {
+    "${LAUNCHCTL}" disable "system/${DAEMON_LABEL}" 2>/dev/null \
+        || log_warn "launchctl disable system/${DAEMON_LABEL} failed"
+}
+
+# Coarse gate: the path-only sudoers drop-in must never outlive the PAM gate,
+# or enrolled users could run the listed binaries with any arguments.
+# Marker-guarded: only a Serberus-written drop-in is removed. Runs again after
+# bootout, because the still-running daemon can rewrite it until then.
+# Returns 1 when the drop-in is STILL there: the caller must not unwire.
+remove_sudoers_dropin() {
+    local result
+    result=$(serberus_pam_remove_sudoers_dropin) || result="FAILED"
+    log_error "abort path: sudoers drop-in removal result=${result}"
+    [[ "${result}" != "FAILED" ]]
+}
+
+# A PREVIOUS install may have left /etc/pam.d/sudo_local wired to
+# pam_serberus. Marker-aware (pam-lib.sh): user PAM lines survive, legacy
+# bare-name lines are stripped too, and the file is deleted only if Serberus
+# created it. `|| result=FAILED` keeps a failure from short-circuiting the
+# abort path. Returns 1 when an ACTIVE line SURVIVES — the caller must then
+# keep the daemon running behind it.
+unwire_sudo_local() {
+    local result
+    result=$(serberus_pam_remove_sudo_local "${SUDO_LOCAL}") || result="FAILED"
+    log_error "abort path: sudo_local unwire result=${result}"
+    if serberus_pam_sudo_local_has_module "${SUDO_LOCAL}"
+    then
+        return 1
+    fi
+    return 0
+}
+
+bootout_daemon() {
+    if "${LAUNCHCTL}" print "system/${DAEMON_LABEL}" >/dev/null 2>&1
+    then
+        "${LAUNCHCTL}" bootout "system/${DAEMON_LABEL}" 2>/dev/null || true
+        if ! serberus_launchd_wait_gone "${DAEMON_LABEL}" \
+            2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+        then
+            DAEMON_GONE=0
+            log_error "abort path: ${DAEMON_LABEL} is still loaded after its bootout"
+        fi
+    fi
+}
+
+# Routes serberus_daemon_manual_steps into the log. $1 demote | restore
+log_manual_steps() {
+    local line
+    while IFS= read -r line
+    do
+        log_error "${line}"
+    done < <(serberus_daemon_manual_steps "$1" "${AUTHDB_BACKUPS}")
+}
+
+# With the daemon disabled nothing would ever expire a JIT grant, so demote
+# now — but never by executing a daemon that failed signature validation.
+# Exit 3 = no grant store, nothing to demote.
+demote_jit_admins() {
+    if [[ "${DAEMON_GONE}" -ne 1 ]]
+    then
+        log_error "abort path: the daemon is still loaded — NOT running --demote-jit beside it."
+        log_manual_steps demote
+        return 0
+    fi
+    if [[ "${DAEMON_TRUSTED}" -ne 1 || ! -x "${DAEMON_BINARY}" ]]
+    then
+        log_error "abort path: the daemon failed signature validation (or is missing) — NOT executing it."
+        log_manual_steps demote
+        return 0
+    fi
+    local status=0
+    serberus_run_bounded "${ONESHOT_TIMEOUT}" "${DAEMON_BINARY}" --demote-jit \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err) || status=$?
+    case "${status}" in
+        0)
+            log_info "abort path: JIT admins demoted"
+            ;;
+        3)
+            log_info "abort path: no grant store — no JIT admins to demote"
+            ;;
+        *)
+            log_error "abort path: --demote-jit FAILED (exit ${status}; 124 = timed out)"
+            log_manual_steps demote
+            ;;
+    esac
+}
+
+restore_authorization_db() {
+    if [[ "${DAEMON_GONE}" -ne 1 ]]
+    then
+        log_error "abort path: the daemon is still loaded — NOT running --restore-authdb beside it."
+        log_manual_steps restore
+        return 0
+    fi
+    if [[ "${DAEMON_TRUSTED}" -ne 1 || ! -x "${DAEMON_BINARY}" ]]
+    then
+        log_error "abort path: the daemon failed signature validation (or is missing) — NOT executing it for --restore-authdb."
+        log_manual_steps restore
+        return 0
+    fi
+    local status=0
+    serberus_run_bounded "${ONESHOT_TIMEOUT}" "${DAEMON_BINARY}" --restore-authdb \
+        2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err) || status=$?
+    if [[ "${status}" -ne 0 ]]
+    then
+        log_error "abort path: authdb restore FAILED (exit ${status}; 124 = timed out) — review ${AUTHDB_BACKUPS}"
+    fi
+}
+
+# The ONE abort path. Nothing this run started is left running or wired:
+# drop-in (a SURVIVING drop-in re-arms the daemon and stops here, before the
+# PAM gate is touched) -> unwire (a SURVIVING line re-arms the daemon and
+# stops here) -> disable -> bootout (and wait until it is gone) -> drop-in
+# again -> demote JIT -> restore the AuthorizationDB -> degraded state (real
+# reason) -> exit 1.
+#   $1 degraded reason, $2… message
+abort_install() {
+    local reason="$1"
+    shift
+    ABORT_IN_PROGRESS=1
+    set +e
+    log_error "ABORTING (${reason}): $*"
+    if ! remove_sudoers_dropin
+    then
+        log_error "!!! The Serberus sudoers drop-in SURVIVED its removal. NOT unwiring ${SUDO_LOCAL}:"
+        log_error "!!! the PAM gate must outlive the drop-in. Keeping ${DAEMON_LABEL} ENABLED and RUNNING."
+        log_manual_steps sudoers
+        serberus_daemon_rearm_if_wired "${SUDO_LOCAL}" "${DAEMON_LABEL}" "${LAUNCHD_PLIST}" \
+            2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+        write_state_degraded "${reason}"
+        exit 1
+    fi
+    if ! unwire_sudo_local
+    then
+        log_error "!!! An ACTIVE pam_serberus line SURVIVED the unwire in ${SUDO_LOCAL}."
+        log_error "!!! Keeping ${DAEMON_LABEL} ENABLED and RUNNING behind it (a wired module with no"
+        log_error "!!! daemon denies every sudo). Remove the pam_serberus line from ${SUDO_LOCAL} by"
+        log_error "!!! hand, then reinstall or run ${INSTALLED_UNINSTALL}."
+        serberus_daemon_rearm_if_wired "${SUDO_LOCAL}" "${DAEMON_LABEL}" "${LAUNCHD_PLIST}" \
+            2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+        write_state_degraded "${reason}"
+        exit 1
+    fi
+    disable_daemon
+    bootout_daemon
+    if ! remove_sudoers_dropin
+    then
+        log_error "!!! The Serberus sudoers drop-in is STILL present after the bootout, with no PAM gate behind it."
+        log_manual_steps sudoers
+    fi
+    demote_jit_admins
+    restore_authorization_db
+    write_state_degraded "${reason}"
+    exit 1
+}
+
+wire_sudo_local() {
+    local merge_result
+    merge_result=$(serberus_pam_merge_sudo_local "${SUDO_LOCAL}" "${SUDO_LOCAL_TEMPLATE}") \
+        || merge_result="FAILED"
+    log_info "sudo_local merge: ${merge_result} (${SUDO_LOCAL})"
+
+    # Post-merge sanity: the file must now be canonical (one active
+    # `requisite` line, FIRST among the auth lines) — the shape the daemon
+    # requires before it writes the sudoers drop-in. If it is not, roll back
+    # exactly what this run added (marker-aware: the file is deleted only if
+    # this run created it) and fail the install.
+    if ! serberus_pam_sudo_local_is_canonical "${SUDO_LOCAL}"
+    then
+        log_error "post-merge sanity FAIL: ${SUDO_LOCAL} is not canonical (Serberus line missing or not the first auth line)"
+        local rollback
+        rollback=$(serberus_pam_remove_sudo_local "${SUDO_LOCAL}")
+        log_error "rolled back sudo_local (${rollback}) — aborting"
+        return 1
+    fi
+
+    # A file we created or merged into is written 0444 by pam-lib.sh; assert
+    # root:wheel. A pre-existing canonical file ('present') keeps its content
+    # and other mode bits, but the daemon only trusts a root-owned sudo_local
+    # no group/other can write (it refuses to write the sudoers drop-in
+    # otherwise), so that much is asserted either way.
+    # Each step is checked on its own: a failed chown must not be hidden by a
+    # chmod that succeeds after it.
+    local mode="go-w"
+    if [[ "${merge_result}" == "created" || "${merge_result}" == "merged" ]]
+    then
+        mode="444"
+    fi
+    if ! "${CHOWN}" -h root:wheel "${SUDO_LOCAL}"
+    then
+        log_error "could not chown ${SUDO_LOCAL} to root:wheel"
+        return 1
+    fi
+    if ! "${CHMOD}" -h "${mode}" "${SUDO_LOCAL}"
+    then
+        log_error "could not chmod ${mode} ${SUDO_LOCAL}"
+        return 1
+    fi
+}
+
+check_full_disk_access() {
+    # FDA gates the ESF client only; absence is non-fatal — the daemon writes
+    # state=pending_pppc itself on startup.
+    if [[ -r "/Library/Application Support/com.apple.TCC/TCC.db" ]]
+    then
+        log_info "Full Disk Access present"
+    else
+        log_info "Full Disk Access not yet granted; daemon will run pending_pppc"
+    fi
+}
+
+##################################
+### End User Defined Functions ###
+##################################
+###################################################################################
+############## End Function Block #################################################
+###################################################################################
+
+#####################################################
+################## Run Script Block #################
+#####################################################
+
+log_info "${SCRIPT_NAME} v${SCRIPT_VERSION} starting (installer log: /var/log/install.log)"
+
+require_root
+require_boot_volume
+source_pam_lib
+trap on_exit EXIT
+
+assess_daemon_trust
+ensure_directories
+
+# Directory chain FIRST: nothing is chowned or chmodded inside a directory a
+# non-root user controls.
+if ! module_path_is_safe
+then
+    abort_install "pam_not_wired" "PAM module directory chain is not root-only"
+fi
+
+# The CLI's folder chain next: root runs `serberus status` before sudo_local
+# is wired, and /usr/local/bin can belong to a user (Intel Homebrew). Say so,
+# instead of failing later as "never came up", and take the payload CLI back
+# out of a folder a user controls.
+if ! cli_dir_is_root_only
+then
+    abort_install "pam_not_wired" "the serberus CLI's folder chain (/usr/local/bin, /usr/local, /usr) is not root-only: each must be a real directory owned by root and not group- or other-writable. Fix the ownership (e.g. Intel Homebrew's /usr/local/bin), then reinstall"
+fi
+
+if ! upgrade_validation_passes
+then
+    abort_install "${VALIDATION_REASON}" "upgrade validation failed"
+fi
+
+if ! remove_versioned_module
+then
+    abort_install "pam_not_wired" "could not remove ${SERBERUS_PAM_MODULE_VERSIONED_PATH}, which OpenPAM would load in place of the module"
+fi
+
+if ! shadowing_pam_policy_absent
+then
+    abort_install "pam_not_wired" "a PAM policy file OpenPAM reads in place of ${PAM_SUDO} / ${SUDO_LOCAL} exists"
+fi
+
+check_full_disk_access
+check_pam_sudo_includes_sudo_local
+write_version_plist
+
+# Bootstrap the daemon BEFORE wiring sudo_local: if it never comes up, sudo is
+# never intercepted with no daemon behind it (in enforce mode that would
+# hard-deny every non-bypass sudo). Enable first — an earlier uninstall or
+# abort leaves the label disabled, and bootstrap refuses a disabled service.
+log_info "Enabling + bootstrapping ${DAEMON_LABEL}"
+"${LAUNCHCTL}" enable "system/${DAEMON_LABEL}" 2>/dev/null \
+    || log_warn "launchctl enable system/${DAEMON_LABEL} failed"
+# Taken BEFORE the bootstrap: a state.plist older than this was written by the
+# previous daemon and proves nothing about this one.
+BOOTSTRAP_MARK=$(serberus_launchd_bootstrap_mark)
+if ! "${LAUNCHCTL}" bootstrap system "${LAUNCHD_PLIST}"
+then
+    abort_install "pam_not_wired" "launchctl bootstrap failed"
+fi
+
+# "Loaded" is not "up": a daemon AMFI kills at every spawn stays loaded in a
+# KeepAlive loop and is briefly "running" at each respawn. Wire only once one
+# pid has held for 8 s with no launchd restart or failed exit, the daemon has
+# written its own state.plist since the bootstrap, and `serberus status`
+# reports a fresh state.
+if ! serberus_launchd_wait_running "${DAEMON_LABEL}" "${DAEMON_START_TIMEOUT}" "${CLI_BINARY}" "${DAEMON_TEAM}" "${STATE_PLIST}" "${BOOTSTRAP_MARK}" 2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+then
+    abort_install "pam_not_wired" "${DAEMON_LABEL} never came up (no stable pid within ${DAEMON_START_TIMEOUT}s, a restart, no fresh state.plist, or serberus status failed)"
+fi
+log_info "Daemon ${DAEMON_LABEL} is running (pid ${SERBERUS_LAUNCHD_UP_PID})"
+
+# Last look before sudo is gated: still the same daemon process.
+if ! serberus_launchd_pid_unchanged "${DAEMON_LABEL}" 2> >("${LOGGER}" -t "${LOG_LABEL}" -p user.err)
+then
+    abort_install "pam_not_wired" "${DAEMON_LABEL} restarted after it was confirmed up"
+fi
+if ! wire_sudo_local
+then
+    abort_install "pam_not_wired" "sudo_local wiring failed"
+fi
+
+# Authorization hosts cache loaded plugin code; they are transient, so killing
+# them makes the next authorization load the freshly installed SerberusAuth.
+"${KILLALL}" SecurityAgent authorizationhost 2>/dev/null || true
+
+INSTALL_SUCCEEDED=1
+log_info "${SCRIPT_NAME} completed successfully"
+exit 0
+
+###########################################################
+################## End Script Block #######################
+###########################################################

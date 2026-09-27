@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0",
+  "policyVersion": "1.0.0",
+  "profileKey": "rules_sudo_test",
+  "profilePriority": 50,
+  "rules": [
+    {
+      "id": "prompt-echo",
+      "type": "sudo",
+      "action": "allow",
+      "description": "Prompt the user to approve sudo /bin/echo",
+      "priority": 10,
+      "match": { "commandPattern": "/bin/echo", "matchType": "exact" },
+      "conditions": { "requireJustification": false, "maxGrantDurationSeconds": 300 },
+      "elevation": { "type": "prompt", "logArguments": true }
+    },
+    {
+      "id": "silent-true",
+      "type": "sudo",
+      "action": "allow",
+      "description": "Silently allow sudo /usr/bin/true",
+      "priority": 20,
+      "match": { "commandPattern": "/usr/bin/true", "matchType": "exact" },
+      "conditions": { "requireJustification": false, "maxGrantDurationSeconds": 0 },
+      "elevation": { "type": "silent", "logArguments": false }
+    },
+    {
+      "id": "deny-shutdown",
+      "type": "sudo",
+      "action": "deny",
+      "description": "Explicitly deny sudo /sbin/shutdown",
+      "priority": 5,
+      "match": { "commandPattern": "/sbin/shutdown", "matchType": "exact" },
+      "conditions": { "requireJustification": false, "maxGrantDurationSeconds": 0 },
+      "elevation": { "type": "silent", "logArguments": false }
+    }
+  ]
+}

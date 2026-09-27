@@ -1,0 +1,66 @@
+{
+  "title": "Serberus — Sudo Enrollment (standalone / per-device)",
+  "description": "Standalone Custom Schema for ONLY the sudoEnrollment key of the com.herojoneslabs.serberus.config domain. Scope this as a SEPARATE configuration profile from your main Serberus config — e.g. per-device, with the $USERNAME payload variable filled from the device record. Deliver it at the computer (System) level: the daemon reads only computer-level managed preferences and ignores a user-level profile — so you can dynamically set who is enrolled for curated sudo without editing the org-wide config. macOS composes managed preferences per-domain at the KEY level, so this profile contributes only sudoEnrollment while the base profile keeps enforcementMode/pamBypass. RULE: exactly ONE profile may set sudoEnrollment — use THIS profile for it and leave sudoEnrollment UNSET in the base config profile, otherwise two profiles setting the same key conflict and one silently wins. Every value is a native plist type read by ManagedPreferencesReader.readConfig(); no daemon change is needed to use this.",
+  "__preferencedomain": "com.herojoneslabs.serberus.config",
+  "type": "object",
+  "properties": {
+    "sudoEnrollment": {
+      "type": "object",
+      "title": "Sudo enrollment (standard-user curated sudo)",
+      "description": "Which STANDARD users may run the curated allow/prompt sudo commands. The daemon writes /etc/sudoers.d/serberus for these principals (per-command, never NOPASSWD/ALL). pam_serberus governs AUTHENTICATION; this governs sudoers AUTHORIZATION — a non-admin user needs an entry here to run any curated command at all (admins already can). Distinct from PAM bypass, which is the break-glass escape hatch.",
+      "property_order": 10,
+      "properties": {
+        "users": {
+          "type": "array",
+          "title": "Enrolled users",
+          "description": "Standard-user shortnames to enroll for curated sudo. On a 1:1 Mac, set this to $USERNAME — a Jamf payload variable substituted with the assigned user's shortname at deploy time; the daemon safely rejects the literal token if substitution doesn't happen.",
+          "items": { "type": "string", "title": "User shortname" },
+          "property_order": 10
+        },
+        "group": {
+          "type": "string",
+          "title": "Enrolled group (optional)",
+          "description": "A single group whose members are enrolled, emitted as a sudoers %group. Resolves LOCAL / Open Directory groups only — NOT raw Entra groups (use the IdP settings below for Entra).",
+          "property_order": 20
+        },
+        "idpSource": {
+          "type": "string",
+          "title": "IdP group source",
+          "description": "Optional: enroll by Entra (Azure AD) group. 'Disabled' (default) leaves IdP enrollment off. 'Jamf Connect state cache' reads the console user's Jamf Connect state and enrolls that VERIFIED console user if they are in one of the IdP groups below (it can only ever enroll the current console user, never a name taken from the file).",
+          "enum": ["disabled", "jamf_connect_state"],
+          "options": { "enum_titles": ["Disabled", "Jamf Connect state cache"] },
+          "default": "disabled",
+          "property_order": 30
+        },
+        "idpGroups": {
+          "type": "array",
+          "title": "IdP groups",
+          "description": "Entra group names or GUIDs. The console user is enrolled when their Jamf Connect state lists membership in any of these. Requires idpSource = Jamf Connect state cache.",
+          "items": { "type": "string", "title": "Entra group name or GUID" },
+          "property_order": 40
+        },
+        "idpStatePath": {
+          "type": "string",
+          "title": "IdP state path (advanced)",
+          "description": "Path, relative to the console user's home, to the Jamf Connect state plist. Default: Library/Preferences/com.jamf.connect.state.plist.",
+          "default": "Library/Preferences/com.jamf.connect.state.plist",
+          "property_order": 50
+        },
+        "idpGroupsKey": {
+          "type": "string",
+          "title": "IdP groups key (advanced)",
+          "description": "Key inside the Jamf Connect state plist holding the group list. Default: UserGroups.",
+          "default": "UserGroups",
+          "property_order": 60
+        },
+        "requireRootOwnedState": {
+          "type": "boolean",
+          "title": "Require root-owned IdP state (advanced)",
+          "description": "Require the IdP state file to be root-owned and not writable by its owner. Default true: the Jamf Connect state file is written by the user, so without this a user can add a group claim and enrol themselves in curated sudo. Set false only if you accept that risk; enrolment then trusts the user-owned file.",
+          "default": true,
+          "property_order": 70
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus 1:1 curated-sudo enrollment config — bare domain plist
+  (com.herojoneslabs.serberus.config).
+
+  This is the bare-plist form of serberus-config-1to1-username.mobileconfig
+  (same values, no MDM PayloadContent wrapper), for Jamf Pro's Application &
+  Custom Settings -> Upload File. Either way the values must arrive
+  COMPUTER-LEVEL (System-scoped) as managed preferences, read from
+  /Library/Managed Preferences/com.herojoneslabs.serberus.config.plist.
+
+  $USERNAME is a JAMF PAYLOAD VARIABLE: Jamf substitutes the assigned user's
+  shortname at deploy time. Delivered by anything that does not substitute
+  it, the literal token "$USERNAME" arrives; the daemon safely REJECTS it as
+  a principal (not a real account) and enrolls nobody. For a test outside
+  Jamf, replace "$USERNAME" with an actual shortname.
+
+  Every value is a NATIVE plist type (string / dict / array-of-string), NEVER a
+  JSON string. A value of the wrong type (a JSON string, for example) is reported as
+  degraded (config_invalid) and the config is not adopted: the daemon keeps
+  its last-known-good config, or, on a Mac never configured, stays in
+  bootstrap (sudo passes through, nothing is enforced).
+
+  enforcementMode is "enforce". MONITOR-MODE NOTE: for a first pass an operator
+  may change enforce -> monitor to observe (log-only) before enforcing.
+  pamBypass groups=[admin] is break-glass (admins never locked out).
+
+  Delivery: upload this plist to Jamf Pro (Application & Custom Settings ->
+  Upload File, domain com.herojoneslabs.serberus.config) or wrap it in a
+  configuration profile. Serberus reads only managed preferences; a local
+  `defaults import` is ignored.
+-->
+<plist version="1.0">
+<dict>
+	<key>enforcementMode</key>
+	<string>enforce</string>
+	<key>pamBypass</key>
+	<dict>
+		<key>groups</key>
+		<array>
+			<string>admin</string>
+		</array>
+	</dict>
+	<key>sudoEnrollment</key>
+	<dict>
+		<key>users</key>
+		<array>
+			<string>$USERNAME</string>
+		</array>
+	</dict>
+</dict>
+</plist>

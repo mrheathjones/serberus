@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in Serberus doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Don't report security vulnerabilities here.** Use the Security tab's
+        "Report a vulnerability" instead (see SECURITY.md).
+
+        Remove usernames, serial numbers, hostnames, Jamf URLs and credentials
+        from anything you paste.
+  - type: input
+    id: version
+    attributes:
+      label: Serberus commit or version
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac model
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - serberusd (daemon)
+        - pam_serberus (sudo)
+        - SerberusAuth (authorization plugin)
+        - Serberus Sentinel / menu-bar agent
+        - Serberus Commander
+        - serberus CLI
+        - Installer packages or scripts
+        - Documentation
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Enforcement mode
+      options: [enforce, audit, monitor, not configured]
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: state
+    attributes:
+      label: Daemon state
+      description: Output of `serberus status`, and the relevant configuration-profile keys with secrets removed.
+      render: text

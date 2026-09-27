@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Distribution entitlements for serberusd (Endpoint Security).
+
+  All THREE keys are required for the restricted Endpoint Security entitlement to
+  be honored by AMFI. `application-identifier` is what connects the binary's
+  entitlement claims to the embedded provisioning profile (per Apple DTS); it must
+  match the explicit App ID the profile is issued for (NOT a wildcard).
+
+  Used only for the profiled / Developer-ID-signed build that ships in the .pkg
+  (see Support/build-serberusd-bundle.sh + docs/esf-provisioning-and-notarization.md).
+  Local non-profiled builds carry no entitlements at all (the Xcode serberusd
+  target sets none; the test packages sign with an empty file), so AMFI lets
+  them launch and ESF simply stays inactive.
+
+  This is a TEMPLATE: build-serberusd-bundle.sh replaces __TEAM_ID__ with the
+  configured Apple Developer Team ID (DEVELOPMENT_TEAM, from the environment or
+  Config/Local.xcconfig) before signing. Don't pass it to codesign directly.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.application-identifier</key>
+    <string>__TEAM_ID__.com.herojoneslabs.serberus.daemon</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>__TEAM_ID__</string>
+    <key>com.apple.developer.endpoint-security.client</key>
+    <true/>
+</dict>
+</plist>

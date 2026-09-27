@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus — PPPC: Full Disk Access for serberusd (TEST PACKAGES).
+
+  WHICH FILE: use this one for the daemon the TEST packages install (the core,
+  combined and daemon-only test packages, and Support/serberusd-devtool.sh): a
+  flat binary, signed with an Apple Development identity. For the production
+  package (serberusd.app, Developer ID), use
+  serberus-daemon-fda-pppc-production.mobileconfig instead.
+
+  WHY: the daemon's Endpoint Security client needs Full Disk Access. Without
+  it the daemon reports `pending_pppc`: `sudo` and authorization-right
+  enforcement are fully active, only the ESF exec gate is held back, and the
+  Sentinel menu bar shows "Setup pending · disk access". FDA can only be
+  granted to a daemon by MDM (PPPC). The test packages sign the daemon without
+  the Endpoint Security entitlement, so on a test Mac this profile clears
+  `pending_pppc` but the exec gate still doesn't run.
+
+  IDENTITY: the test daemon is the flat binary
+    /Library/PrivilegedHelperTools/com.herojoneslabs.serberus.daemon
+  signed with the identifier `com.herojoneslabs.serberus.daemon`.
+
+  IDENTIFIER TYPE = path: the binary is not inside an app bundle, so it has no
+  bundle ID for TCC to match. TCC matches a non-bundled executable by its path
+  plus the code requirement below, which does the cryptographic pinning.
+
+  CODE REQUIREMENT: it pins an Apple Development signature from the
+  maintainer's team (M5RQTPC7A2). Replace M5RQTPC7A2 with your own Team ID.
+  Check it against the installed daemon with
+    codesign -v -R '<requirement>' /Library/PrivilegedHelperTools/com.herojoneslabs.serberus.daemon
+  A requirement the daemon doesn't satisfy leaves it in `pending_pppc` even
+  with the profile installed.
+
+  AFTER DEPLOY, on the device (the daemon checks FDA when it starts and when
+  its policy changes, not on a timer):
+    sudo launchctl kickstart -k system/com.herojoneslabs.serberus.daemon
+    sudo defaults read "/Library/Application Support/Serberus/state.plist" state
+    # expect: any state other than pending_pppc (healthy once rules are delivered)
+
+  Scope to the same Macs as the daemon package.
+  PayloadUUIDs are pre-filled; regenerate (`uuidgen`) only if you fork this
+  profile into a second, separately-scoped copy.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.apple.TCC.configuration-profile-policy</string>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.pppc.fda</string>
+			<key>PayloadUUID</key>
+			<string>A27EFC8E-AFB3-4EDC-993E-7AD3E42AE01F</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadDisplayName</key>
+			<string>Serberus daemon — Full Disk Access (test packages)</string>
+			<key>Services</key>
+			<dict>
+				<key>SystemPolicyAllFiles</key>
+				<array>
+					<dict>
+						<key>Identifier</key>
+						<string>/Library/PrivilegedHelperTools/com.herojoneslabs.serberus.daemon</string>
+						<key>IdentifierType</key>
+						<string>path</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.herojoneslabs.serberus.daemon" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */ and certificate leaf[subject.OU] = M5RQTPC7A2</string>
+						<key>StaticCode</key>
+						<false/>
+						<key>Allowed</key>
+						<true/>
+						<key>Comment</key>
+						<string>serberusd (test packages): flat binary, Apple Development signature</string>
+					</dict>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Grants Full Disk Access to the Serberus daemon installed by the test packages. sudo and authorization-right enforcement work without it; this clears pending_pppc.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Daemon Full Disk Access (PPPC, test packages)</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.pppc</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>296204FF-7C6E-4E86-9F31-D4069D6AF360</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus Finder-extension election LaunchAgent — a per-user, run-once-at-login
+  helper that ELECTS the "Install/Uninstall with Serberus" Finder Sync extension
+  (bundle com.herojoneslabs.serberus.intel.finderext) with pluginkit. A Finder
+  Sync extension is OFF by default and the election is PER-USER, so the app pkg's
+  postinstall can only enable it for the user logged in AT install time. This
+  agent runs at EVERY user's login (RunAtLoad, Aqua) so the extension is elected
+  for every user on the Mac — fleet-wide, zero-touch.
+
+  Election is UNCONDITIONAL (the extension is merely made loadable); whether the
+  right-click items actually SHOW is decided dynamically by the extension itself,
+  which reads the daemon's appmanagement-state marker each right-click. So on a
+  Mac where app management is off, the extension loads but offers nothing.
+
+  Installed to /Library/LaunchAgents/com.herojoneslabs.serberus.finderext-elect.plist
+  (root:wheel, 644). One-shot: RunAtLoad runs it once per login; no KeepAlive
+  (it elects and exits). Registers the appex first (belt-and-suspenders in case
+  LaunchServices hasn't rescanned yet right after install), then elects it.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.herojoneslabs.serberus.finderext-elect</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>/usr/bin/pluginkit -a "/Applications/Serberus Sentinel.app/Contents/PlugIns/SerberusFinderExtension.appex" &gt;/dev/null 2&gt;&amp;1; /usr/bin/pluginkit -e use -i com.herojoneslabs.serberus.intel.finderext &gt;/dev/null 2&gt;&amp;1</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- GUI-session agent only. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+</dict>
+</plist>

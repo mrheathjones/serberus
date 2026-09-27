@@ -1,0 +1,12 @@
+# sudo_local: managed by com.herojoneslabs.serberus - do not edit
+# Installed at /etc/pam.d/sudo_local (444, root:wheel), create-if-absent only.
+# The module lives at /usr/local/lib/pam/pam_serberus.so and MUST be referenced
+# by absolute path: libpam searches more than one directory for a bare module
+# name, so a bare name would not pin which file sudo loads.
+# `requisite` (not `required`): on a Serberus deny the stack returns
+# immediately - pam_opendirectory never runs, so the user is not asked for a
+# password whose outcome is already decided. Success and PAM_IGNORE flow
+# onward exactly as with `required`, so nothing else changes.
+# Apple owns /etc/pam.d/sudo (which includes sudo_local) and it survives OS
+# updates, so Serberus never modifies it directly.
+auth       requisite      /usr/local/lib/pam/pam_serberus.so # serberus-managed

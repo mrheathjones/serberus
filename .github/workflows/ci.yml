@@ -1,0 +1,120 @@
+# Runs on each push to main and each pull request. Two jobs run in parallel:
+#
+#   test   Builds and runs every test bundle (the AllTests scheme), and the
+#          shell tests for the installer logic that edits sudo's config.
+#   build  Builds every app and tool in Release, plus the PAM module. The
+#          test bundles only compile the shared libraries, so without this
+#          job a change could break an app and still pass.
+#
+# No signing secrets are needed. The test job lets Xcode sign ad hoc ("Sign
+# to Run Locally"); the build job turns signing off. The runner must be
+# macOS 26, the project's deployment target; the test bundles won't load on
+# anything older.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only token: this workflow never writes to the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      # Pinned to a full commit SHA so a moved tag can't change what runs here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      - name: Build and test
+        run: |
+          xcodebuild \
+            -project Serberus.xcodeproj \
+            -scheme AllTests \
+            -destination 'platform=macOS' \
+            test
+
+      # Every tracked shell script, plus the extension-less installer scripts
+      # in PKG/Scripts, must at least parse: a quoting slip in one of them
+      # once merged unnoticed. (The builders' generated pre/postinstall and
+      # uninstall scripts are parsed by the installer shell tests below.)
+      - name: Shell syntax (bash -n)
+        run: |
+          set -uo pipefail
+          status=0
+          while IFS= read -r script
+          do
+            if ! bash -n "${script}"
+            then
+              echo "::error file=${script}::bash -n failed"
+              status=1
+            fi
+          done < <(git ls-files '*.sh' PKG/Scripts)
+          exit "${status}"
+
+      # The installer's sudo_local and sudoers logic, run against temporary
+      # files only, plus structural checks of every script the PKG builders
+      # generate (PKG/build-core-test-pkg.sh and the others, via their
+      # --emit-scripts modes).
+      - name: Installer shell tests
+        run: |
+          bash PKG/tests/test-pam-lib.sh
+          bash PKG/tests/test-sentinel-lib.sh
+
+  build:
+    name: Build apps and tools
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      # Release is what the packaging scripts ship, and the project carries a
+      # Release-only compiler workaround that a Debug build never exercises.
+      - name: Build every app and tool (Release, unsigned)
+        run: |
+          set -euo pipefail
+          for scheme in SerberusCommander SerberusSentinel SerberusSentinelAgent \
+                        SerberusGuardian serberusd serberus SerberusAuth
+          do
+            echo "::group::${scheme}"
+            xcodebuild \
+              -project Serberus.xcodeproj \
+              -scheme "${scheme}" \
+              -configuration Release \
+              -destination 'generic/platform=macOS' \
+              -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
+              CODE_SIGNING_ALLOWED=NO \
+              build
+            echo "::endgroup::"
+          done
+
+      # Built the way the test packages build it (build-core-test-pkg.sh
+      # runs this script): clang, signed ad hoc. The production package
+      # (build-pkg.sh) builds the pam_serberus Xcode scheme and signs it with
+      # Developer ID instead.
+      - name: Build the PAM module
+        run: LIVE_DIR="${RUNNER_TEMP}/pam" ./Support/build-pam.sh --build

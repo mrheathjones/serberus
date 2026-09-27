@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus authURI rules in the DEDICATED sub-domain com.herojoneslabs.serberus.rules.authuri.
+  The daemon reads every com.herojoneslabs.serberus.rules.<suffix> sub-domain
+  alongside the base domain. Its native `rules` array lives
+  in its own domain, so it composes with the sudo native array in
+  com.herojoneslabs.serberus.rules.sudo instead of colliding. Three Date & Time
+  allow rights (pane unlock, timezone, and the Set-automatically parent).
+  macOS 27 does not define the timezone right: the daemon creates it after
+  checking the wildcard authd answers it from (system., a plain admin gate),
+  and removes it again on restore.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.rules.authuri</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>policyVersion</key>
+								<string>1.0.0</string>
+								<key>profilePriority</key>
+								<integer>50</integer>
+								<key>rules</key>
+								<array>
+									<dict>
+										<key>id</key>
+										<string>auth-uri-system.preferences</string>
+										<key>type</key>
+										<string>authuri</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>authURI</key>
+										<string>system.preferences</string>
+										<key>description</key>
+										<string>Allow session owner to authenticate for the Set-automatically toggle</string>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+									<dict>
+										<key>id</key>
+										<string>auth-uri-system.preferences.datetime</string>
+										<key>type</key>
+										<string>authuri</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>authURI</key>
+										<string>system.preferences.datetime</string>
+										<key>description</key>
+										<string>Allow session owner to authenticate for Date and Time</string>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+									<dict>
+										<key>id</key>
+										<string>auth-uri-system.preferences.dateandtime.changetimezone</string>
+										<key>type</key>
+										<string>authuri</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>authURI</key>
+										<string>system.preferences.dateandtime.changetimezone</string>
+										<key>description</key>
+										<string>Allow session owner to authenticate for timezone change</string>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+								</array>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Rules — authURI (sub-domain)</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.rules.authuri.native</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>B8469C45-F519-4DD5-9D38-4AF5376481BF</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus authURI rules (native array) in the .rules.authuri sub-domain — composes with .rules.sudo.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Rules authURI (sub-domain)</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.rules.authuri.native</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>74C0DCC6-754C-4304-ADAF-67832C7B5491</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus — audit prompt branding + presentation (com.herojoneslabs.serberus.prompts).
+
+  Brands the Sentinel's audit prompt header: `brandTitle` (your org name) and
+  `brandSubtitle` render next to the Sentinel icon, left aligned; empty or
+  absent keys fall back to the unbranded product name. This sample sets
+  brandTitle to "Serberus" as a placeholder; replace it with your
+  organisation's name, which users see on every approval prompt. The button labels are
+  also configurable (defaults: "Yes, continue" / "No, cancel" — Return/Esc
+  cancel, only ⌘↩ approves, regardless of label text).
+
+  The SENTINEL reads this domain directly from managed preferences on each
+  prompt (world-readable; no daemon round-trip), so a pushed change applies to
+  the very next prompt — no restart. The daemon separately reads
+  justificationMinLength from the same domain. The prompt timeout is the
+  config domain's promptTimeoutSeconds, and whether a reason is required is
+  set per rule (requireJustification), not here.
+
+  Alternative authoring path: Jamf "Application & Custom Settings" with the
+  Custom Schema Support/jamf-schemas/com.herojoneslabs.serberus.prompts.json
+  (same keys, same domain).
+
+  PayloadUUIDs are pre-filled; regenerate (`uuidgen`) only if you fork this
+  profile into a second, separately-scoped copy.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.herojoneslabs.serberus.prompts</string>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.prompts.branding</string>
+			<key>PayloadUUID</key>
+			<string>7D8FBE71-4B2A-4F0E-9C64-2AC1E8B57D10</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadDisplayName</key>
+			<string>Serberus prompt branding</string>
+			<key>brandTitle</key>
+			<string>Serberus</string>
+			<key>brandSubtitle</key>
+			<string>IT Security</string>
+			<key>allowButtonLabel</key>
+			<string>Yes, continue</string>
+			<key>denyButtonLabel</key>
+			<string>No, cancel</string>
+			<key>menuBarTopRulesCount</key>
+			<integer>3</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Brands the Serberus Sentinel audit prompt with the organization name and subtitle, and sets the prompt button labels.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Prompt Branding</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.prompts.branding.profile</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>3E52A6C4-91D7-45B8-B7F2-6E0D14C88A29</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

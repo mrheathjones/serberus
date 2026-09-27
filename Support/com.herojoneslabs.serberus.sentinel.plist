@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus menu-bar LaunchAgent — supervises the "Serberus Sentinel Agent.app"
+  menu bar app (bundle com.herojoneslabs.serberus.sentinel), which is installed
+  HIDDEN under /Library/Application Support/Serberus so
+  /Applications shows only the one user-facing "Serberus Sentinel.app" (the
+  separate full-window app). The Label keeps the …sentinel bundle ID because the
+  daemon's XPCConnectionValidator pins the agent to it.
+
+  Installed to /Library/LaunchAgents/com.herojoneslabs.serberus.sentinel.plist (root:wheel, 644)
+  so it loads for every user session; runs as the logged-in user.
+
+  Launches the app BINARY directly (not via `/usr/bin/open`) because KeepAlive
+  can only supervise the process launchd itself spawned — with `open`, launchd
+  tracks the short-lived `open` helper, which exits immediately, so KeepAlive
+  would tight-loop. Direct exec lets launchd watch the real app and relaunch it.
+
+  KeepAlive = { SuccessfulExit = false }: if the app is force-quit, killed
+  (SIGKILL/SIGTERM), or crashes, launchd relaunches it — a security agent must
+  not stay down because it was killed. A DELIBERATE Quit from the menu exits 0,
+  which counts as a successful exit, so that (and only that) leaves it down.
+  For a fully non-quittable agent, set KeepAlive to <true/>.
+
+  Upgrade/(re)install flow is driven by the pkg, not KeepAlive: the preinstall
+  `bootout`s the job (removing KeepAlive supervision) and kills the process
+  BEFORE the payload lands, and the postinstall `bootstrap`s the fresh job
+  (RunAtLoad starts it). bootout de-registers the job, so KeepAlive can never
+  relaunch a stale binary mid-swap.
+
+  NOTE (verify on-device): a SwiftUI MenuBarExtra app started by direct exec
+  historically could come up without its status item. If that recurs, the app —
+  not this plist — is the right place to fix it (e.g. an AppKit status-item
+  fallback); reverting to `open` would forfeit KeepAlive.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.herojoneslabs.serberus.sentinel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Application Support/Serberus/Serberus Sentinel Agent.app/Contents/MacOS/Serberus Sentinel Agent</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- The agent vends ONE Mach service: the Finder-extension → agent bridge.
+         The sandboxed SerberusFinderExtension.appex (top-level "Install/Uninstall
+         with Serberus" right-click items) connects here to forward a selected
+         path; the agent authenticates the peer's audit token and routes it to the
+         daemon exactly as the NSService path does. launchd must advertise the name
+         so the agent can check in and vend it (xpc_connection_create_mach_service
+         LISTENER). The name is authoritative in BundleConfig.finderBridgeMachService. -->
+    <key>MachServices</key>
+    <dict>
+        <key>com.herojoneslabs.serberus.sentinel.finder-bridge</key>
+        <true/>
+    </dict>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Don't hammer relaunches if the app exits abnormally in a tight loop
+         (e.g. a launch-time crash): wait 5s between relaunch attempts. -->
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <!-- GUI-session agent only. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <!-- No StandardOut/ErrorPath: everything goes to the unified log
+         (subsystem com.herojoneslabs.serberus), avoiding a predictable path in
+         world-writable /tmp that another local user could pre-create as a
+         symlink. Read with:
+         log show (last hour) with the predicate
+         subsystem == "com.herojoneslabs.serberus" -->
+</dict>
+</plist>

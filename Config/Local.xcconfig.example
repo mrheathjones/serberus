@@ -1,0 +1,6 @@
+// Local signing settings. Copy this file to Config/Local.xcconfig, which is
+// gitignored, and set your 10-character Apple Developer Team ID, for example
+// DEVELOPMENT_TEAM = ABCDE12345. Find it at developer.apple.com/account under
+// Membership details.
+
+DEVELOPMENT_TEAM =

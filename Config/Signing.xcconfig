@@ -1,0 +1,13 @@
+// Signing configuration shared by every target (the project-level base
+// configuration for Debug and Release).
+//
+// Don't put a team ID in this file. Copy Config/Local.xcconfig.example to
+// Config/Local.xcconfig, which is gitignored, and set DEVELOPMENT_TEAM there.
+// You can also pass DEVELOPMENT_TEAM=YOURTEAMID to xcodebuild. Five scripts
+// read the same file through Support/team-id-lib.sh:
+// Support/build-serberusd-bundle.sh, Support/serberusd-devtool.sh, and
+// PKG/build-commander-pkg.sh, build-sentinel-app-pkg.sh and
+// build-authuribrowser-pkg.sh. build-pkg.sh and build-combined-pkg.sh reach
+// it only through the scripts they call; the other build scripts don't read it.
+
+#include? "Local.xcconfig"

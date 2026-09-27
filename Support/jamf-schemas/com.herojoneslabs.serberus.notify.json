@@ -1,0 +1,17 @@
+{
+  "title": "Serberus — Log retention",
+  "description": "How long serberusd keeps its on-disk decision logs. This is the only setting in this domain; it is delivered to the com.herojoneslabs.serberus.notify preference domain, which keeps its original name.",
+  "__preferencedomain": "com.herojoneslabs.serberus.notify",
+  "type": "object",
+  "properties": {
+    "logRetentionDays": {
+      "type": "integer",
+      "title": "Log retention (days)",
+      "description": "How long on-disk JSONL logs are kept before rotation cleanup.",
+      "default": 90,
+      "minimum": 1,
+      "maximum": 3650,
+      "property_order": 20
+    }
+  }
+}

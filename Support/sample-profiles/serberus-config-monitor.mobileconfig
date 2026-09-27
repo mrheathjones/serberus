@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus daemon config — MONITOR mode. Scope this to take the daemon out of
+  `awaitingConfig` and start observing. Monitor keeps PAM/sudo PASS-THROUGH (no
+  brick risk) and changes nothing on the Mac: no sudoers drop-in, and the
+  AuthorizationDB stays native. Rule profiles (sudo and authURI) are enforced
+  only in "enforce" mode. pamBypass groups=admin is a harmless safety net in
+  monitor and becomes the real break-glass if you later flip enforcementMode
+  to "enforce". Values are NATIVE plist types.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.config</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>enforcementMode</key>
+								<string>monitor</string>
+								<key>pamBypass</key>
+								<dict>
+									<key>groups</key>
+									<array>
+										<string>admin</string>
+									</array>
+								</dict>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Config — monitor</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.config.monitor</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>706CF2F8-DFCB-47FF-BD86-41199C6192FA</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus daemon configuration: monitor mode (PAM pass-through, AuthorizationDB left native) with an admin-group break-glass. Takes the daemon out of awaitingConfig; rules are enforced only in enforce mode.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Config monitor</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.config.monitor</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>ED690FB1-3D4D-4474-9D5A-1235F72D9375</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

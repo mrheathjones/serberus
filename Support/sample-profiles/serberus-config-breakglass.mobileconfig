@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus break-glass daemon config profile. Scope this BEFORE the PAM module
+  is installed (SECURITY.md, "Deploying safely"). With no config, a Mac that
+  has never been configured passes sudo through (bootstrap) and Serberus
+  enforces nothing. Once a config has been adopted, removing it does NOT turn
+  Serberus off: pam_serberus and the daemon keep enforcing the last-known-good
+  snapshot, so the break-glass you set here is what keeps admins able to sudo
+  if the profile later goes missing. Values are NATIVE plist
+  types (never a JSON string). Replace REPLACE_WITH_A_BREAK_GLASS_ADMIN with a
+  real local admin; flip enforcementMode to "enforce" only after the
+  pass-through install is verified.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.config</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>enforcementMode</key>
+								<string>monitor</string>
+								<key>pamBypass</key>
+								<dict>
+									<key>groups</key>
+									<array>
+										<string>admin</string>
+									</array>
+									<key>users</key>
+									<array>
+										<string>REPLACE_WITH_A_BREAK_GLASS_ADMIN</string>
+									</array>
+								</dict>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Config — break-glass (monitor + PAM bypass)</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.config.breakglass</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>B6307DD8-A39A-4DF7-A061-D14A545B1CDD</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus daemon break-glass configuration: monitor mode + PAM bypass for admins. Deliver before installing pam_serberus.so.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Config break-glass</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.config.breakglass</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>56E18608-46EB-4737-8956-3A99788A6F98</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

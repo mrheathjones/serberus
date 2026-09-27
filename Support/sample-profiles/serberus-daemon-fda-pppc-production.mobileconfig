@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus — PPPC: Full Disk Access for serberusd (PRODUCTION PACKAGE).
+
+  WHICH FILE: use this one for the daemon the PRODUCTION package
+  (PKG/build-pkg.sh) installs: the app-like bundle serberusd.app, signed with
+  a Developer ID Application identity. For the test packages' flat binary, use
+  serberus-daemon-fda-pppc-test.mobileconfig instead.
+
+  WHY: the daemon's Endpoint Security client needs Full Disk Access. Without
+  it the daemon reports `pending_pppc`: `sudo` and authorization-right
+  enforcement are fully active, only the ESF exec gate is held back. FDA can
+  only be granted to a daemon by MDM (PPPC).
+
+  IDENTITY: the daemon runs from
+    /Library/PrivilegedHelperTools/serberusd.app/Contents/MacOS/com.herojoneslabs.serberus.daemon
+  and the bundle's CFBundleIdentifier and signing identifier are both
+  `com.herojoneslabs.serberus.daemon`.
+
+  IDENTIFIER TYPE: TCC identifies the main executable of a bundle by its
+  bundle ID, so the first entry uses IdentifierType = bundleID. The second
+  entry names the same executable by path, as a fallback. Both carry the same
+  code requirement, so the second entry grants nothing the first doesn't.
+
+  CODE REQUIREMENT: it pins a Developer ID Application signature from the
+  maintainer's team (M5RQTPC7A2). Replace M5RQTPC7A2 with your own Team ID in
+  both entries. If you register your own daemon bundle ID (see
+  docs/esf-provisioning-and-notarization.md), replace
+  com.herojoneslabs.serberus.daemon too. Check it against the installed daemon
+  with
+    codesign -v -R '<requirement>' /Library/PrivilegedHelperTools/serberusd.app
+  A requirement the daemon doesn't satisfy leaves it in `pending_pppc` even
+  with the profile installed.
+
+  AFTER DEPLOY, on the device (the daemon checks FDA when it starts and when
+  its policy changes, and starts the ESF client only at startup):
+    sudo launchctl kickstart -k system/com.herojoneslabs.serberus.daemon
+    sudo defaults read "/Library/Application Support/Serberus/state.plist" state
+    # expect: any state other than pending_pppc (healthy once rules are delivered)
+
+  Scope to the same Macs as the daemon package.
+  PayloadUUIDs are pre-filled; regenerate (`uuidgen`) only if you fork this
+  profile into a second, separately-scoped copy.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.apple.TCC.configuration-profile-policy</string>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.pppc.production.fda</string>
+			<key>PayloadUUID</key>
+			<string>8C593849-BBB9-431F-800D-997985C943E2</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadDisplayName</key>
+			<string>Serberus daemon — Full Disk Access (production)</string>
+			<key>Services</key>
+			<dict>
+				<key>SystemPolicyAllFiles</key>
+				<array>
+					<dict>
+						<key>Identifier</key>
+						<string>com.herojoneslabs.serberus.daemon</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.herojoneslabs.serberus.daemon" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = M5RQTPC7A2</string>
+						<key>StaticCode</key>
+						<false/>
+						<key>Allowed</key>
+						<true/>
+						<key>Comment</key>
+						<string>serberusd.app (production): matched by bundle ID, Developer ID signature</string>
+					</dict>
+					<dict>
+						<key>Identifier</key>
+						<string>/Library/PrivilegedHelperTools/serberusd.app/Contents/MacOS/com.herojoneslabs.serberus.daemon</string>
+						<key>IdentifierType</key>
+						<string>path</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.herojoneslabs.serberus.daemon" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = M5RQTPC7A2</string>
+						<key>StaticCode</key>
+						<false/>
+						<key>Allowed</key>
+						<true/>
+						<key>Comment</key>
+						<string>serberusd.app (production): same executable by path, same requirement</string>
+					</dict>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Grants Full Disk Access to the Serberus daemon installed by the production package, so its Endpoint Security client can start. sudo and authorization-right enforcement work without it; this clears pending_pppc.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Daemon Full Disk Access (PPPC, production)</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.pppc.production</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>161749AB-5377-42DE-B6E9-B53D63A0474A</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus daemon config — ENFORCE with custom user-facing sudo messages.
+  Both messages are shown at the sudo TERMINAL by pam_serberus
+  and support the literal token {command}, which is replaced with the FULL
+  command line as invoked, INCLUDING its arguments — e.g.
+  "/usr/local/jamf/bin/jamf policy", not just "/usr/local/jamf/bin/jamf".
+    - sudoDenyMessage: shown when a curated command is DENIED by policy (enforce).
+      Absent ⇒ the built-in message (which already names the command) is used.
+      Does NOT change the separate "policy service unavailable" fail-closed text.
+    - sudoAllowMessage: OPTIONAL note shown when a command is ALLOWED (enforce,
+      non-bypass users only). Absent ⇒ no message.
+  Replace the admin/user names with real accounts before scoping.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.config</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>enforcementMode</key>
+								<string>enforce</string>
+								<key>pamBypass</key>
+								<dict>
+									<key>groups</key>
+									<array>
+										<string>admin</string>
+									</array>
+								</dict>
+								<key>sudoEnrollment</key>
+								<dict>
+									<key>users</key>
+									<array>
+										<string>standarduser</string>
+									</array>
+								</dict>
+								<key>sudoDenyMessage</key>
+								<string>Serberus: '{command}' is not approved for your account. Contact the Service Desk if you need this access.</string>
+								<key>sudoAllowMessage</key>
+								<string>Serberus: running '{command}' under managed IT policy — this action is logged.</string>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Config — enforce + messages</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.config.messages</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>9C7A8F4D-C3E2-4851-825F-05B2FC20CEE6</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus enforce config with custom sudo deny/allow terminal messages ({command} token).</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Config enforce + messages</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.config.messages</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>0E351AA3-30F1-4141-AFE8-A7F00B3782E6</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

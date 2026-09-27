@@ -1,0 +1,5 @@
+module SerberusXPCShim {
+    header "serberus_xpc_shim.h"
+    header "serberus_xpc_keys.h"
+    export *
+}

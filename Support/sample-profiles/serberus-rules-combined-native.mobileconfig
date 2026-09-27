@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus rules — ONE native `rules` array (Jamf Custom Schema shape) carrying
+  BOTH authURI and sudo rules. This is the single-profile pattern for the native
+  array: because the array lives under the SINGLE `rules` key in domain
+  com.herojoneslabs.serberus.rules, only ONE such profile can exist per domain
+  (two would collide and macOS keeps just one). So all schema-authored rules go
+  here together. The daemon ALSO reads uniquely-keyed rules_<key> JSON strings
+  (Serberus app publish / .mobileconfig export), which compose alongside this.
+  Rules: 3 authURI Date & Time allows + 2 sudo allows (jamf recon / jamf log).
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.herojoneslabs.serberus.rules</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>policyVersion</key>
+								<string>1.0.0</string>
+								<key>profilePriority</key>
+								<integer>50</integer>
+								<key>rules</key>
+								<array>
+									<dict>
+										<key>id</key>
+										<string>auth-uri-system.preferences</string>
+										<key>type</key>
+										<string>authuri</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>authURI</key>
+										<string>system.preferences</string>
+										<key>description</key>
+										<string>Allow session owner to authenticate for the Set-automatically toggle</string>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+									<dict>
+										<key>id</key>
+										<string>auth-uri-system.preferences.datetime</string>
+										<key>type</key>
+										<string>authuri</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>authURI</key>
+										<string>system.preferences.datetime</string>
+										<key>description</key>
+										<string>Allow session owner to authenticate for Date and Time</string>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+									<dict>
+										<key>id</key>
+										<string>auth-uri-system.preferences.dateandtime.changetimezone</string>
+										<key>type</key>
+										<string>authuri</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>authURI</key>
+										<string>system.preferences.dateandtime.changetimezone</string>
+										<key>description</key>
+										<string>Allow session owner to authenticate for timezone change</string>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+									<dict>
+										<key>id</key>
+										<string>allow-jamf-recon</string>
+										<key>type</key>
+										<string>sudo</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>commandPattern</key>
+										<string>/usr/local/bin/jamf</string>
+										<key>matchType</key>
+										<string>exact</string>
+										<key>argPattern</key>
+										<string>^recon$</string>
+										<key>description</key>
+										<string>Allow enrolled standard user to run sudo jamf recon</string>
+										<key>elevationType</key>
+										<string>silent</string>
+										<key>logArguments</key>
+										<true/>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+									<dict>
+										<key>id</key>
+										<string>allow-jamf-log</string>
+										<key>type</key>
+										<string>sudo</string>
+										<key>action</key>
+										<string>allow</string>
+										<key>commandPattern</key>
+										<string>/usr/local/bin/jamf</string>
+										<key>matchType</key>
+										<string>exact</string>
+										<key>argPattern</key>
+										<string>^log$</string>
+										<key>description</key>
+										<string>Allow enrolled standard user to run sudo jamf log</string>
+										<key>elevationType</key>
+										<string>silent</string>
+										<key>logArguments</key>
+										<true/>
+										<key>priority</key>
+										<integer>50</integer>
+									</dict>
+								</array>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Serberus Rules — combined (native)</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>PayloadIdentifier</key>
+			<string>com.herojoneslabs.serberus.rules.combined</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>5D2672C0-9512-4F4B-ADE8-38CCCFDEBFB9</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Serberus rules (native array): authURI Date &amp; Time + sudo jamf recon/log.</string>
+	<key>PayloadDisplayName</key>
+	<string>Serberus — Rules combined (native)</string>
+	<key>PayloadIdentifier</key>
+	<string>com.herojoneslabs.serberus.rules.combined</string>
+	<key>PayloadOrganization</key>
+	<string>Serberus</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>7944E6E2-802D-4ACF-8377-5E5A0D7BB46B</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

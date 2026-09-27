@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for SerberusFinderExtension.appex — the sandboxed Finder Sync
+  extension that provides the top-level "Install/Uninstall with Serberus"
+  right-click items. The OS refuses to load a non-sandboxed FinderSync, so
+  app-sandbox is mandatory. The ONLY sandbox escape it needs is a mach-lookup
+  exception for the AGENT's bridge service — deliberately NOT the daemon's
+  service, so the daemon still rejects this bundle id as an unknown caller if it
+  ever connected directly. No file-access entitlement: the extension marshals a
+  path string only; the daemon reads the file (as root, after re-validating).
+
+  Applied in ALL configs (not Release-only like the agent's is-ui-sentinel):
+  app-sandbox + a temporary-exception are auto-provisioned by Apple-Development
+  signing, so they don't need a provisioning profile the way a custom
+  entitlement marker would.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+    <array>
+        <string>com.herojoneslabs.serberus.sentinel.finder-bridge</string>
+    </array>
+    <!-- Read-only access to the daemon's tiny app-management master-gate marker,
+         so the extension can HIDE its items where app management is off. Read-only
+         and a single fixed path — it reads a bool; it never writes and gets no
+         other file access. Keep in sync with BundleConfig.appManagementStatePath. -->
+    <key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
+    <array>
+        <string>/Library/Application Support/Serberus/appmanagement-state.plist</string>
+    </array>
+</dict>
+</plist>

@@ -1,0 +1,88 @@
+{
+  "title": "Serberus — Just-in-Time Admin",
+  "description": "Just-in-time local-admin elevation policy for Serberus. Delivered to the com.herojoneslabs.serberus.jit preference domain. Fail-closed: leave the provider on 'Disabled' and no self-service elevation exists. Only a computer-level profile counts. The daemon applies changes within about 30 seconds; no restart is needed. Moving the provider away from 'Serberus (native)', or removing this profile, ends every open Serberus admin window within that time.",
+  "__preferencedomain": "com.herojoneslabs.serberus.jit",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "title": "Provider",
+      "description": "Where just-in-time admin elevation is handled. 'Disabled' turns the feature off, including Serberus admin windows already open: they end within about 30 seconds, as if they had expired. Switching to 'Jamf Connect / Self Service+' ends them the same way. 'Serberus (native)' has the Serberus daemon add the user to the local admin group for a bounded, auto-expiring window. 'Jamf Connect / Self Service+' turns the Serberus menu bar item into a single button that launches the privilege elevation of Jamf Connect or Self Service+, which owns the reason prompt, eligibility, and expiration. That requires privilege elevation with URLCommandLineElevation enabled in the Jamf Connect / Self Service+ profile. While a user is elevated (by either provider) and in the local admin group, Serberus steps aside for their sudo.",
+      "default": "disabled",
+      "enum": [
+        "disabled",
+        "serberus",
+        "jamf_connect"
+      ],
+      "options": {
+        "enum_titles": [
+          "Disabled",
+          "Serberus (native)",
+          "Jamf Connect / Self Service+"
+        ]
+      },
+      "property_order": 10
+    },
+    "eligibleGroups": {
+      "type": "array",
+      "title": "Eligible groups (Serberus provider)",
+      "description": "Local or directory group names whose members may self-elevate. Only used by the 'Serberus (native)' provider. Empty = nobody may elevate (fail-closed). Checked when a user requests a window: removing a user from these groups doesn't end a window they already have (remove them from the local admin group to end it). Ignored by the Jamf Connect provider, which scopes eligibility in its own configuration.",
+      "items": {
+        "type": "string",
+        "title": "Group name"
+      },
+      "property_order": 20
+    },
+    "maxDurationSeconds": {
+      "type": "integer",
+      "title": "Maximum admin window (seconds)",
+      "description": "How long a Serberus-native admin window lasts before the user is automatically demoted. A value outside 1–28800 (8 hours) is rejected: the default (900 seconds) is used and the daemon reports degraded (config_invalid). Only used by the 'Serberus (native)' provider.",
+      "default": 900,
+      "minimum": 1,
+      "maximum": 28800,
+      "property_order": 30
+    },
+    "requireJustification": {
+      "type": "boolean",
+      "title": "Require justification (Serberus provider)",
+      "description": "When true, the user must type a reason before elevating, and the reason is written to the Serberus decision log. Only applies to the 'Serberus (native)' provider — Jamf Connect always shows its own reason prompt.",
+      "default": true,
+      "property_order": 40
+    },
+    "justificationMinLength": {
+      "type": "integer",
+      "title": "Minimum justification length",
+      "description": "Minimum number of characters required in the justification when 'Require justification' is on.",
+      "default": 10,
+      "minimum": 0,
+      "maximum": 10000,
+      "property_order": 50
+    },
+    "jamfConnectCommand": {
+      "type": "object",
+      "title": "Jamf Connect command (Jamf Connect / Self Service+ provider)",
+      "description": "The command the Serberus menu bar app runs in the user's session to trigger Jamf Connect / Self Service+ elevation. Only used by the 'Jamf Connect / Self Service+' provider. Leave Command path blank to use the built-in default: /usr/local/bin/jamfconnect acc-promo --elevate. Once a path is set, the Arguments list is used exactly as given; the built-in arguments are not added. The path must be absolute; a relative path is ignored and the default is used. Before running it, the menu bar app checks that the binary is signed by Jamf (Team ID 483DWKW443) and shows the item disabled if it is missing or fails that check.",
+      "property_order": 70,
+      "properties": {
+        "path": {
+          "type": "string",
+          "title": "Command path",
+          "description": "Absolute path of the executable to run (e.g. /usr/local/bin/jamfconnect). Blank = the whole built-in default command (/usr/local/bin/jamfconnect acc-promo --elevate); the Arguments field is then ignored. A relative path or bare command name is refused and the default is used.",
+          "default": "/usr/local/bin/jamfconnect",
+          "property_order": 10
+        },
+        "arguments": {
+          "type": "array",
+          "title": "Arguments",
+          "description": "Arguments passed to the command, run verbatim (no substitution). Used only when Command path is set; blank then means the command runs with no arguments. The default command uses: acc-promo --elevate.",
+          "default": ["acc-promo", "--elevate"],
+          "items": {
+            "type": "string",
+            "title": "Argument"
+          },
+          "property_order": 20
+        }
+      }
+    }
+  }
+}

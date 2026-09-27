@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus Guardian LaunchAgent — supervises "Serberus Guardian.app" (bundle
+  com.herojoneslabs.serberus.guardian), a tiny INVISIBLE LSUIElement agent
+  installed hidden under /Library/Application Support/Serberus.
+  It watches the Sentinel menu-bar agent and, when the user quits it (and the
+  managed `guardianEnabled` gate is on), shows a persistent panel with a
+  "Launch Serberus" button.
+
+  Installed to /Library/LaunchAgents/com.herojoneslabs.serberus.guardian.plist
+  (root:wheel, 644) so it loads for every user session; runs as the logged-in user.
+
+  KeepAlive = <true/> (UNCONDITIONAL): the guardian is the opposite policy from
+  the Sentinel's KeepAlive={SuccessfulExit=false}. There is nothing for a user to
+  quit (no menu bar item, no Dock icon), so making it non-quittable is safe and
+  ensures the watchdog can never itself be turned off. NOTE (upgrade): the pkg
+  preinstall MUST `bootout` this job BEFORE the payload lands — KeepAlive=true
+  would otherwise relaunch a stale binary mid-swap.
+
+  Launches the app BINARY directly (not via `open`) so KeepAlive supervises the
+  real process (an `open` helper exits immediately and KeepAlive would tight-loop).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.herojoneslabs.serberus.guardian</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Application Support/Serberus/Serberus Guardian.app/Contents/MacOS/Serberus Guardian</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Don't hammer relaunches if it exits abnormally in a tight loop. -->
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <!-- GUI-session agent only. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <!-- No StandardOut/ErrorPath: everything goes to the unified log
+         (subsystem com.herojoneslabs.serberus, category "guardian"), avoiding a
+         predictable world-writable /tmp path. Read with:
+         log show (last hour) with the predicate
+         subsystem == "com.herojoneslabs.serberus" -->
+</dict>
+</plist>

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0",
+  "policyVersion": "1.0.0",
+  "profileKey": "rules_authuri_test",
+  "profilePriority": 60,
+  "rules": [
+    {
+      "id": "deny-datetime",
+      "type": "authuri",
+      "action": "deny",
+      "description": "Block the Date & Time pane unlock right (class=deny). Safe, reversible, no lockout risk.",
+      "priority": 10,
+      "match": { "authURI": "system.preferences.datetime" },
+      "conditions": { "requireJustification": false, "maxGrantDurationSeconds": 0 },
+      "elevation": { "type": "silent", "logArguments": false }
+    },
+    {
+      "id": "admin-gate-printing",
+      "type": "authuri",
+      "action": "allow",
+      "description": "Let the session owner (or an admin) authenticate for the Printing pane unlock right (allow maps to authenticate-session-owner-or-admin, never class=allow).",
+      "priority": 20,
+      "match": { "authURI": "system.preferences.printing" },
+      "conditions": { "requireJustification": false, "maxGrantDurationSeconds": 0 },
+      "elevation": { "type": "silent", "logArguments": false }
+    }
+  ]
+}

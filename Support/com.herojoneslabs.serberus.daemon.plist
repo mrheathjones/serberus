@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Serberus root LaunchDaemon.
+  Installed by the PKG to /Library/LaunchDaemons/com.herojoneslabs.serberus.daemon.plist
+  (root:wheel, 644). The daemon ships as an app-like bundle
+  (/Library/PrivilegedHelperTools/serberusd.app) so it can carry the
+  embedded.provisionprofile that authorizes the Endpoint Security entitlement
+  (docs/esf-provisioning-and-notarization.md); Program points at the executable
+  inside it.
+
+  KeepAlive + ThrottleInterval are MANDATORY: they are what make
+  the HealthMonitor's exit(1) restart mechanism work. Without them an
+  alive-but-broken daemon that exits would not be restarted by launchd.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.herojoneslabs.serberus.daemon</string>
+
+    <key>Program</key>
+    <string>/Library/PrivilegedHelperTools/serberusd.app/Contents/MacOS/com.herojoneslabs.serberus.daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/PrivilegedHelperTools/serberusd.app/Contents/MacOS/com.herojoneslabs.serberus.daemon</string>
+    </array>
+
+    <!-- The single Mach service every caller (PAM, Agent, Admin) connects to. -->
+    <key>MachServices</key>
+    <dict>
+        <key>com.herojoneslabs.serberus.daemon</key>
+        <true/>
+    </dict>
+
+    <!-- Mandatory restart wiring for the HealthMonitor. -->
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <!-- Seconds launchd waits after SIGTERM before SIGKILL (launchd's own
+         default is 5; the daemon gets 20). The installers' teardowns wait
+         this long plus 5 s for a bootout: pam-lib.sh
+         SERBERUS_DAEMON_EXIT_TIMEOUT and SERBERUS_DAEMON_BOOTOUT_WAIT. -->
+    <key>ExitTimeOut</key>
+    <integer>20</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/Library/Logs/Serberus/daemon.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Library/Logs/Serberus/daemon.stderr.log</string>
+</dict>
+</plist>
