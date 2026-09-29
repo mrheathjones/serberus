@@ -1035,8 +1035,10 @@ public actor DaemonController {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         var hasher = Hasher()
+        // Hash every byte: `Data.hash(into:)` can cover only a leading slice
+        // on older Foundation, so equal-length edits past it (serberus -> disabled) went unseen.
         if let rules = try? encoder.encode(prefsReader.readRuleProfiles().value) {
-            hasher.combine(rules)
+            rules.withUnsafeBytes { hasher.combine(bytes: $0) }
         }
         let config = prefsReader.readConfig().value
         hasher.combine(config.daemonEnabled)
@@ -1105,7 +1107,7 @@ public actor DaemonController {
         // must not churn policy reloads.
         hasher.combine(prefsReader.readPrompts().value.justificationMinLength)
         if let jit = try? encoder.encode(prefsReader.readJITAdmin().value) {
-            hasher.combine(jit)
+            jit.withUnsafeBytes { hasher.combine(bytes: $0) }
         }
         // SerberusAuth plugin health (cheap lstat fingerprint; full signature
         // check only on change): the plugin disappearing or returning must
@@ -1480,7 +1482,6 @@ public actor DaemonController {
         retryLastKnownGoodSaveIfNeeded()
 
         let signature = await policySignature()
-        DaemonLog.integrity.notice("DIAG reload: signature=\(signature, privacy: .public) last=\(self.lastPolicySignature, privacy: .public) live-jit=\(self.jitPolicy.provider.rawValue, privacy: .public) delivered-jit=\(self.prefsReader.readJITAdmin().value.provider.rawValue, privacy: .public)")
         // After a reported stall the pass runs even with an unchanged signature,
         // so the state is published again and `reload_stalled` clears.
         guard signature != lastPolicySignature || publishAfterStall else {
