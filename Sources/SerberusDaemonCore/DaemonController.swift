@@ -1480,6 +1480,7 @@ public actor DaemonController {
         retryLastKnownGoodSaveIfNeeded()
 
         let signature = await policySignature()
+        DaemonLog.integrity.notice("DIAG reload: signature=\(signature, privacy: .public) last=\(self.lastPolicySignature, privacy: .public) live-jit=\(self.jitPolicy.provider.rawValue, privacy: .public) delivered-jit=\(self.prefsReader.readJITAdmin().value.provider.rawValue, privacy: .public)")
         // After a reported stall the pass runs even with an unchanged signature,
         // so the state is published again and `reload_stalled` clears.
         guard signature != lastPolicySignature || publishAfterStall else {
